@@ -1,5 +1,7 @@
 # TESL Forge
 
+![TESL Forge](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/banner-1300x372.png)
+
 **The no-code modding suite and mod manager for *The Elder Scrolls: Legends*.** Make new cards with real rules, decks,
 avatars and emotes, card backs, boards, music, voice lines, remastered art, AI opponents, card packs, game modes and
 whole story campaigns without writing a line of code. Install, switch on and check mods in one place, then play them in
@@ -37,6 +39,19 @@ to their owners.
 - **Safe by design:** never changes game files; undo and history, autosaved drafts, problems linked to the item.
 - **Its own window** with themes (Dark, Light, Red, Skyrim, Oblivion, Morrowind, Arcane), a help tour and keyboard
   shortcuts.
+
+<!-- screenshots:start -->
+## Screenshots
+
+| | |
+|---|---|
+| ![TESL Forge](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/00-forge.jpg)<br>TESL Forge | ![Cards, drawn by the game itself](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/01-cards.jpg)<br>Cards, drawn by the game itself |
+| ![Decks](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/02-decks.jpg)<br>Decks | ![Boards](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/05-boards.jpg)<br>Boards |
+| ![Stories](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/09-stories.jpg)<br>Stories | ![Load order and compatibility](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/12-load-order.jpg)<br>Load order and compatibility |
+| ![The card library](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/13-library.jpg)<br>The card library | ![Themes](https://raw.githubusercontent.com/ArchAngelAries/tesl-forge/main/docs/screenshots/15-themes.jpg)<br>Themes |
+
+More in [docs/screenshots](docs/screenshots).
+<!-- screenshots:end -->
 
 ## Requirements
 
