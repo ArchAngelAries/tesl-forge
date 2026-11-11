@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>TESL Forge</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b2f37"/><stop offset="1" stop-color="#101115"/></linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9dee6"/><stop offset="1" stop-color="#5f6670"/></linearGradient>
+    <linearGradient id="fo" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#e2451b"/><stop offset="1" stop-color="#ffb23a"/></linearGradient>
+    <linearGradient id="fi" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ffd25c"/><stop offset="1" stop-color="#fff4cf"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.55" r="0.5"><stop offset="0" stop-color="#ff8a2a" stop-opacity="0.45"/><stop offset="1" stop-color="#ff8a2a" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#bg)"/>
+  <circle cx="128" cy="112" r="92" fill="url(#glow)"/>
+  <rect x="84.0" y="36.0" width="96" height="136" rx="11" transform="rotate(-12 132 104)" fill="#1d2027" stroke="#e8762c" stroke-width="6"/>
+  <path d="M128,146 C90,146 78,114 96,88 C102,103 111,106 113,99 C108,78 119,60 138,44 C135,68 152,77 160,94 C171,116 163,146 128,146 Z" fill="url(#fo)"/>
+  <path d="M128,144 C109,144 104,124 115,108 C119,117 126,117 126,110 C126,98 132,89 141,82 C140,99 151,108 149,123 C147,136 140,144 128,144 Z" fill="url(#fi)"/>
+  <path d="M28,146 L216,144 L216,165 L182,170 L166,184 L164,198 L190,210 L192,222 L64,222 L66,210 L92,198 L90,184 L76,172 L58,166 L28,146 Z" fill="url(#steel)" stroke="#2a2d33" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M30,146 L216,144 L216,151 L44,153 Z" fill="#f4f6f9" opacity="0.85"/>
+</svg>

@@ -1,0 +1,7 @@
+.venv/
+workspace/
+deploy/
+mods/*
+!mods/README.txt
+__pycache__/
+*.pyc

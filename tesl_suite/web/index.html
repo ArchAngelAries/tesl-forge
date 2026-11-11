@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TESL Forge</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="icon" href="icon-32.png" sizes="32x32" type="image/png">
+<link rel="stylesheet" href="style.css">
+<script>
+  // Theme and text size before the first paint (saved per computer; the app works without storage too).
+  (function () {
+    var t = "dark", z = 1;
+    try { t = localStorage.getItem("forge.theme") || t; z = parseFloat(localStorage.getItem("forge.textScale")) || z; } catch (e) {}
+    document.documentElement.dataset.theme = t;
+    document.documentElement.style.fontSize = (14 * z) + "px";
+  })();
+</script>
+</head>
+<body>
+<div id="app">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <aside id="sidebar" aria-label="Navigation">
+    <div class="brand"><span class="brand-mark">◆</span><div><b>TESL</b> Forge<small id="version"></small></div></div>
+    <div class="side-section">
+      <div class="side-title">Mods <button class="icon-btn" id="new-mod-btn" title="New mod" aria-label="New mod">＋</button></div>
+      <div id="mod-list"></div>
+    </div>
+    <nav id="mod-nav" class="side-section hidden">
+      <div class="side-title" id="mod-nav-title">Mod</div>
+      <a data-view="overview">Overview</a>
+      <a data-view="cards">Cards</a>
+      <a data-view="decks">Decks</a>
+      <a data-view="avatars">Avatars &amp; emotes</a>
+      <a data-view="cardbacks">Card backs</a>
+      <a data-view="boards">Boards</a>
+      <a data-view="music">Music</a>
+      <a data-view="sounds">Sounds &amp; voices</a>
+      <a data-view="modes">Game modes</a>
+      <a data-view="stories">Stories</a>
+      <a data-view="opponents">AI opponents</a>
+      <a data-view="packs">Card packs</a>
+      <a data-view="translations">Translations</a>
+      <a data-view="bulk">Bulk import</a>
+      <a data-view="remaster">Remaster art</a>
+    </nav>
+    <nav class="side-section">
+      <div class="side-title">Game data</div>
+      <a data-view="search" data-global="1">Search all mods</a>
+      <a data-view="loadorder" data-global="1">Load order &amp; compatibility</a>
+      <a data-view="library" data-global="1">Card library</a>
+      <a data-view="assets" data-global="1">Asset browser</a>
+    </nav>
+    <div class="prefs">
+      <div><label for="pref-theme">Theme</label><select id="pref-theme">
+        <option value="dark">Dark</option><option value="light">Light</option><option value="red">Red</option>
+        <option value="skyrim">Skyrim</option><option value="oblivion">Oblivion</option><option value="morrowind">Morrowind</option>
+        <option value="arcane">Arcane (purple &amp; gold)</option></select></div>
+      <div><label for="pref-size">Text size</label><select id="pref-size">
+        <option value="0.85">Small</option><option value="1">Normal</option><option value="1.15">Large</option>
+        <option value="1.3">Larger</option><option value="1.5">Largest</option></select></div>
+    </div>
+    <div class="help-links"><button id="help-btn" title="Help and keyboard shortcuts (?)">Help &amp; shortcuts</button> <button id="tour-btn">Tour</button></div>
+    <div class="side-foot" id="game-path"></div>
+  </aside>
+  <main id="main" tabindex="-1"><div class="empty-state"><h1>Welcome</h1><p>Pick a mod on the left, or create one with ＋.</p></div></main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="modal" class="hidden" role="dialog" aria-modal="true" aria-label="Dialog"><div class="modal-box"><div id="modal-body"></div></div></div>
+<script src="app.js"></script>
+</body>
+</html>
