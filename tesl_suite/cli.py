@@ -74,7 +74,7 @@ def cmd_card_art(args):
     """Card art at original resolution, named '<Card Name> [<id>].png', with a manifest mapping art to every card using it."""
     game = find_install(args.game)
     index = assets.load_index(game)
-    by_path = {e["path"].lower(): e for e in index["entries"]}
+    by_path = assets.by_path(index)
     rows = cards.catalog(game, args.data)
     if args.contains:
         rows = [c for c in rows if args.contains.lower() in (c["name"] or "").lower()]
@@ -238,7 +238,7 @@ def _mod_commands(sub):
     ab.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.api", fromlist=["card_abilities"]).card_abilities(a.card),
         lambda p: [print(f"{x['id']:12} {x['label']}: " + ", ".join(f"{q['label']}={q['value']} [{'.'.join(map(str, q['path']))}]" for q in x["params"])) for x in p["abilities"]]))
     d = sub.add_parser("deck", help="author decks").add_subparsers(dest="cmd", required=True)
-    dn = d.add_parser("new", help="new deck: --cards 'Name x3, Other Card x2, ...'")
+    dn = d.add_parser("new", help="new deck: --cards 'Name x3; Other Card x2' (separate with ; or new lines, or give a JSON array; commas work for names without commas)")
     dn.add_argument("--mod", required=True); dn.add_argument("--name", required=True); dn.add_argument("--cards", required=True)
     dn.add_argument("--art-card"); dn.add_argument("--description", default="")
     dn.set_defaults(fn=_simple(lambda a: mods.new_deck(find_install(a.game), a.mod, a.name, a.cards, a.art_card, a.description),
@@ -310,7 +310,7 @@ def _cardback_commands(sub):
 
 def _bulk_commands(sub):
     from . import bulk
-    b = sub.add_parser("bulk", help="import many cards, card art or music tracks at once").add_subparsers(dest="cmd", required=True)
+    b = sub.add_parser("bulk", help="import many cards, card art, sounds or music tracks at once").add_subparsers(dest="cmd", required=True)
     pictures = (".png", ".jpg", ".jpeg", ".webp")
     def folder_files(d, exts):
         return {p.name: str(p) for p in sorted(Path(d).iterdir()) if p.suffix.lower() in exts} if d else {}
@@ -321,6 +321,9 @@ def _bulk_commands(sub):
     r = b.add_parser("art", help="pictures named after cards: mod cards get new art, original cards a remastered replacement")
     r.add_argument("--mod", required=True); r.add_argument("--dir", required=True)
     r.set_defaults(fn=_simple(lambda a: bulk.art_by_name(find_install(a.game), a.mod, folder_files(a.dir, pictures)), _bulk_report))
+    sn = b.add_parser("sounds", help="audio files named after game sounds or card voice lines (\"Arena End.wav\", \"<card> Play.wav\")")
+    sn.add_argument("--mod", required=True); sn.add_argument("--dir", required=True)
+    sn.set_defaults(fn=_simple(lambda a: bulk.sounds_by_name(find_install(a.game), a.mod, folder_files(a.dir, (".ogg", ".wav", ".mp3", ".flac", ".m4a"))), _bulk_report))
     m = b.add_parser("music", help="audio files as soundtrack tracks"); m.add_argument("--mod", required=True); m.add_argument("--dir", required=True)
     m.add_argument("--at", required=True, help="moments, comma separated (tesl music contexts)"); m.add_argument("--mode", default="rotation", choices=["rotation", "replace"])
     m.set_defaults(fn=_simple(lambda a: bulk.music(a.mod, folder_files(a.dir, (".ogg", ".wav", ".mp3", ".flac", ".m4a")), [x.strip() for x in a.at.split(",") if x.strip()], a.mode), _bulk_report))
@@ -615,6 +618,17 @@ def _board_commands(sub):
     rm.set_defaults(fn=_simple(lambda a: boards.remove(a.mod, a.name), lambda p: print(f"{p['mod']}: removed {p['removed']}")))
 
 
+def _settings_cmd(a):
+    from . import settings
+    if a.set:
+        changes = {}
+        for pair in a.set:
+            k, _, v = pair.partition("=")
+            changes[k.strip()] = v
+        settings.save(changes)
+    return {**settings.load(), "blender_found": settings.find_blender(), "ffmpeg_found": settings.find_tool("ffmpeg"), "file": str(settings.path())}
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="tesl", description="TESL Forge (no game files are modified)")
     p.add_argument("--version", action="version", version=__version__)
@@ -622,6 +636,10 @@ def build_parser():
     p.add_argument("--json", action="store_true", help="machine-readable output for agents")
     sub = p.add_subparsers(dest="area", required=True)
     sub.add_parser("info", help="locate the game and the workspace").set_defaults(fn=cmd_info)
+    st = sub.add_parser("settings", help="this computer's settings (extra game folders, Blender / ffmpeg paths): show, or --set key=value")
+    st.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="game_dirs / steam_dirs (separate several with ;), blender, ffmpeg, ffprobe; an empty value = detect automatically")
+    st.set_defaults(fn=_simple(_settings_cmd, lambda p: [print(f"{k:13} {v}") for k, v in p.items()]))
     sv = sub.add_parser("serve", help="the suite's app and local API in your browser (127.0.0.1 only)")
     sv.add_argument("--port", type=int, default=8765); sv.add_argument("--no-browser", action="store_true")
     sv.set_defaults(fn=lambda a: (__import__("tesl_suite.api", fromlist=["serve"]).serve(a.port, not a.no_browser, a.game), 0)[1])

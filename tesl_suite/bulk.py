@@ -6,6 +6,10 @@
 - art_by_name: many pictures; each file is matched to a card by its file name ("Whiterun Wolfcaller.png",
   "whiterun-wolfcaller.jpg"). A mod card gets it as its art; an original card gets a remastered art replacement.
 - music: many audio files as soundtrack tracks for the chosen moments.
+- sounds_by_name: many audio files; each is matched to a game sound by its file name (the sound's name, its id without the
+  kind, or the name of one of its original clips: "Arena End.wav", "arena_end_resign.ogg"), or to one of this mod's card voice
+  lines ("<card name> <Play|Attack|Death|Hit|Success|Failure|Shout1-3>.wav"). Files that match the same sound become its takes
+  (picked at random in the game).
 Each run is one undo step (Ctrl+Z in the app). Rows that fail are reported and the rest still import.
 """
 from __future__ import annotations
@@ -117,6 +121,74 @@ def music(mod_id: str, files: dict[str, str], contexts: list[str], mode: str = "
         except Exception as e:
             failed.append({"file": fname, "error": str(e)})
     return {"mod": mod_id, "imported": len(done), "failed": failed, "rows": done}
+
+
+def _norm(text: str) -> str:
+    import re
+    return re.sub(r"[^a-z0-9]+", "", text.lower())
+
+
+def _sound_keys(game) -> dict[str, list[dict]]:
+    """normalised name -> sounds that go by it: id (without kind, and with it), label, original clip names."""
+    from . import sounds
+    keys: dict[str, list[dict]] = {}
+    for snd in sounds.catalog(game):
+        short = snd["id"].split(":", 1)[1]
+        for n in {short, snd["id"], snd["label"], snd["category"] + " " + short, *snd["clips"]}:
+            k = _norm(n)
+            if k and snd not in keys.setdefault(k, []):
+                keys[k].append(snd)
+    return keys
+
+
+def sounds_by_name(game, mod_id: str, files: dict[str, str], volume: float = 1.0) -> dict:
+    """files: {original file name: uploaded path}. Every file ends up in rows (used) or failed (with the reason)."""
+    from . import sounds
+    read_mod(mod_id)
+    keys = _sound_keys(game)
+    cards = {}
+    for c in mod_cards(mod_id):
+        for n in (c.get("Name"), c["ResourceId"]["UniqueName"]):
+            if n:
+                cards[_norm(n)] = c
+    slots = {_norm(k): k for k in sounds.ALL_SLOTS}
+    groups: dict[str, list[tuple[str, str]]] = {}      # sound id -> [(file name, path)]
+    rows, failed = [], []
+    for fname, path in files.items():
+        key = _norm(Path(fname).stem)
+        hits = keys.get(key, [])
+        if len(hits) == 1:
+            groups.setdefault(hits[0]["id"], []).append((fname, path))
+            continue
+        if len(hits) > 1:
+            failed.append({"file": fname, "error": f"matches {len(hits)} sounds ({', '.join(h['id'] for h in hits[:4])}): "
+                           "name the file with its kind, e.g. " + hits[0]["category"] + "-" + hits[0]["id"].split(":", 1)[1]})
+            continue
+        for slot_key, slot in slots.items():            # a card voice line: "<card> <slot>"
+            if key.endswith(slot_key) and key[:-len(slot_key)] in cards:
+                card = cards[key[:-len(slot_key)]]
+                try:
+                    r = sounds.card_voice(mod_id, card["ResourceId"]["UniqueName"], slot, path)
+                    rows.append({"file": fname, "action": f"voice line {slot} of {r['card']}"})
+                except Exception as e:
+                    failed.append({"file": fname, "error": str(e)})
+                break
+        else:
+            failed.append({"file": fname, "error": "no game sound or card voice line has this name (name the file like the sound, "
+                           "e.g. \"Arena End.wav\", or \"<card name> Play.wav\"; the search below shows the names)"})
+    labels = {s["id"]: s["label"] for s in sounds.catalog(game)}
+    for sid, items in groups.items():
+        try:
+            sounds.replace_sound(game, mod_id, sid, [p for _, p in items], volume)
+            for fname, _ in items:
+                rows.append({"file": fname, "action": f"replaces {labels[sid]}" + (f" ({len(items)} takes)" if len(items) > 1 else "")})
+        except Exception as e:
+            for fname, _ in items:
+                failed.append({"file": fname, "error": str(e)})
+    order = {f: i for i, f in enumerate(files)}
+    rows.sort(key=lambda r: order[r["file"]])
+    failed.sort(key=lambda r: order[r["file"]])
+    return {"mod": mod_id, "imported": len(rows), "failed": failed, "rows": rows}
 
 
 def template_csv() -> str:

@@ -1,6 +1,7 @@
 """Local HTTP API and web app server: `tesl serve`. Binds to 127.0.0.1 only. Every endpoint is a thin wrapper over the same
 functions the CLI uses, so the app, agents (HTTP + JSON) and the CLI behave identically.
 
+GET  /api/settings, POST /api/settings          this computer's settings (extra game folders, Blender/ffmpeg paths; workspace/settings.json)
 GET  /api/info                                  game, workspace, suite version
 GET  /api/mods                                  all mods with counts and enabled state
 POST /api/mods                                  {id, name, author?, description?}
@@ -12,7 +13,7 @@ POST /api/mods/<id>/export                      a shareable .zip (returns its pa
 POST /api/mods/<id>/uninstall                   moved to workspace/trash
 POST /api/compat/order                          {"order": [ids]} or {"auto": true}
 POST /api/mods/<id>/cards                       {name, template, cost?, attack?, health?, text?, rarity?, art?, rules_from?, no_rules?, unique?}
-POST /api/mods/<id>/decks                       {name, cards: "Name x3, ..." or [{name|id, count}], art_card?, description?}
+POST /api/mods/<id>/decks                       {name, cards: "Name x3; Other x2" (";", new lines or commas) or ["Name x3", {name|id, count}], art_card?, description?}
 POST /api/mods/<id>/avatars                     {name, image, voice?, head?}
 POST /api/mods/<id>/avatars/<slug>/emotes       {emote, text?, audio?}
 DELETE /api/mods/<id>/avatars/<slug>
@@ -191,7 +192,7 @@ def card_art(card_id: int, size: str) -> Path | None:
         card = next((c for c in _catalog() if c["id"] == card_id), None)
         if not card or not card["image"]:
             return None
-        by_path = {e["path"].lower(): e for e in _index()["entries"]}
+        by_path = assets.by_path(_index())
         entry = next((by_path[p] for p in cards.art_asset_paths(card["image"]) if p in by_path), None)
         if entry is None:
             return None
@@ -257,14 +258,12 @@ def save_upload(name: str, data: bytes) -> dict:
     return {"path": str(dest), "name": safe, "bytes": len(data)}
 
 
-def _deck_spec(cards_field) -> str:
+def _deck_spec(cards_field):
+    """Deck list from the app/API/MCP: text (entries split on ";", new lines or commas), or a real list of "Name x3" strings
+    and {name|id, count} objects. A list goes through unchanged, so card names with commas stay whole."""
     if isinstance(cards_field, str):
         return cards_field
-    parts = []
-    for e in cards_field or []:
-        ref = e.get("name") or str(e.get("id"))
-        parts.append(f"{ref} x{int(e.get('count', 1))}")
-    return ", ".join(parts)
+    return list(cards_field or [])
 
 
 def _int(v):
@@ -393,6 +392,12 @@ class Handler(BaseHTTPRequestHandler):
         g = _game
         if method == "GET" and p == ["info"]:
             return self._json(info())
+        if p == ["settings"]:
+            from . import settings as _settings
+            if method == "POST":
+                return self._json(_settings.save(self._payload()))
+            return self._json({**_settings.load(), "blender_found": _settings.find_blender(), "ffmpeg_found": _settings.find_tool("ffmpeg"),
+                               "file": str(_settings.path())})
         if p and p[0] == "mods":
             if len(p) == 1 and method == "GET":
                 return self._json({"mods": mods.list_mods()})
@@ -601,6 +606,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(bulk.cards_csv(_game(), p[1], b.get("text") or "", files))
             if p[3] == "art":
                 return self._json(bulk.art_by_name(_game(), p[1], files))
+            if p[3] == "sounds":
+                return self._json(bulk.sounds_by_name(_game(), p[1], files, float(b.get("volume") or 1.0)))
             if p[3] == "music":
                 return self._json(bulk.music(p[1], files, b.get("contexts") or [], b.get("mode") or "rotation"))
         if p == ["bulk-template.csv"] and method == "GET":

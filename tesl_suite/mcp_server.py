@@ -19,7 +19,12 @@ PROTOCOL = "2024-11-05"
 def _s(desc, **props):
     """JSON schema helper: props as name=(type, description[, required])."""
     required = [k for k, v in props.items() if len(v) > 2 and v[2]]
-    return {"type": "object", "properties": {k: {"type": v[0], "description": v[1]} for k, v in props.items()}, "required": required,
+    def prop(v):
+        d = {"type": v[0], "description": v[1]}
+        if "array" in v[0]:
+            d["items"] = {}          # entries may be strings or {name, count} objects
+        return d
+    return {"type": "object", "properties": {k: prop(v) for k, v in props.items()}, "required": required,
             "description": desc}
 
 
@@ -39,7 +44,7 @@ TOOLS = {
                            force=("boolean", "enable even if compatibility checks would skip it")),
                         lambda a: mods.set_enabled(a["mod"], bool(a["enabled"]), bool(a.get("force")))),
     "edit_item": (_s("Edit an existing item in place (its id and slug stay; only the given fields change). kind: card {name, cost, attack, health, "
-                     "text, rarity, unique, art (image path), rules_from, abilities, keywords} | deck {name, cards_spec (list or 'A x3; B x2'), art_card, "
+                     "text, rarity, unique, art (image path), rules_from, abilities, keywords} | deck {name, cards_spec (list or 'A x3; B x2' - use ; or a list for names with commas), art_card, "
                      "description} | avatar {name, image, head, voice} | cardback {name, image, price, unlock} | board {name, image, base, mode} | "
                      "track {name, file, contexts, mode, volume}.", mod=("string", "mod id", True), kind=("string", "card|deck|avatar|cardback|board|track", True),
                      item=("string", "slug, name or card id", True), fields=("object", "fields to change", True)),
@@ -89,7 +94,7 @@ TOOLS = {
                           card=("string", "card name or id", True)), lambda a: api.card_abilities(a["card"])),
     "new_deck": (_s("Create a premade deck. Game rules: 50-70 cards (75-100 with three attributes), at most 3 copies.",
                     mod=("string", "mod id", True), name=("string", "deck name", True),
-                    cards=("string", "'Card Name x3, Other x2, ...' (names or numeric ids)", True), art_card=("string", "card used for the deck banner"),
+                    cards=(["string", "array"], "a list [\"Card Name x3\", \"Other x2\"] or text 'Card Name x3; Other x2' (separate with ; or new lines; commas also work but names with commas like 'Miraak, Dragonborn' need ; or a list). Names or numeric ids.", True), art_card=("string", "card used for the deck banner"),
                     description=("string", "deck description")),
                  lambda a: mods.new_deck(api._game(), a["mod"], a["name"], a["cards"], a.get("art_card"), a.get("description", ""))),
     "new_avatar": (_s("Add an avatar choice (own page in the avatar picker).", mod=("string", "mod id", True), name=("string", "avatar name", True),
@@ -157,11 +162,13 @@ TOOLS = {
                       lambda a: (lambda pv: {**pv.render(api._game(), a["mod"], a.get("cards"), wait=True), "folder": str(pv.folder(a["mod"]))})(
                           __import__("tesl_suite.previews", fromlist=["render"]))),
     "bulk_import": (_s("Import many items at once. kind cards: text = CSV (name, template, cost, power, health, rarity, text, art, unique; existing names "
-                       "are updated); kind art: files {file name: path}, each named after a card (mod cards get art, originals a replacement); kind music: files "
-                       "{name: path} with contexts [moments] and mode rotation|replace.", mod=("string", "mod id", True), kind=("string", "cards|art|music", True),
+                       "are updated); kind art: files {file name: path}, each named after a card (mod cards get art, originals a replacement); kind sounds: files "
+                       "{name: path}, each named after a game sound or a card voice line (\"Arena End.wav\", \"<card> Play.wav\"); kind music: files "
+                       "{name: path} with contexts [moments] and mode rotation|replace.", mod=("string", "mod id", True), kind=("string", "cards|art|sounds|music", True),
                        text=("string", "CSV text"), files=("object", "{file name: local path}"), contexts=("array", "music moments"), mode=("string", "rotation|replace")),
                     lambda a: (lambda b: b.cards_csv(api._game(), a["mod"], a.get("text") or "", a.get("files") or {}) if a["kind"] == "cards" else
                                b.art_by_name(api._game(), a["mod"], a.get("files") or {}) if a["kind"] == "art" else
+                               b.sounds_by_name(api._game(), a["mod"], a.get("files") or {}) if a["kind"] == "sounds" else
                                b.music(a["mod"], a.get("files") or {}, a.get("contexts") or [], a.get("mode") or "rotation"))(__import__("tesl_suite.bulk", fromlist=["music"]))),
     "translation_table": (_s("A mod's texts (English) with their translation in a language (ISO codes: de, fr, es, it, ru, pl, pt, ja, zh, ko, ...); the game shows "
                              "the translation when it runs in that language.", mod=("string", "mod id", True), language=("string", "language code", True)),

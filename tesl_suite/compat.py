@@ -98,13 +98,53 @@ def multiplayer_class(feats: list[str]) -> str:
     return "cosmetic" if any(f in COSMETIC for f in feats) else "local"
 
 
+_FP_CACHE: dict = {}      # mod folder -> (signature, fingerprint)
+
+
+def _fp_cache_file():
+    from .game import workspace
+    return workspace() / "cache" / "fingerprints.json"
+
+
 def fingerprint(mod_id: str) -> str:
+    """SHA-256 over every file of a mod (names and bytes). Hashing is skipped when no file changed: the result is remembered
+    with a signature of every file's relative path, size and modification time (also between runs, in
+    workspace/cache/fingerprints.json), so a second call only has to look at the folder."""
     root = mod_dir(mod_id)
+    files = sorted(x for x in root.rglob("*") if x.is_file())
+    sig = hashlib.sha256()
+    for p in files:
+        st = p.stat()
+        sig.update(f"{p.relative_to(root).as_posix()}\0{st.st_size}\0{st.st_mtime_ns}\n".encode("utf-8"))
+    signature = sig.hexdigest()
+    key = str(root.resolve())
+    hit = _FP_CACHE.get(key)
+    if hit is None:
+        try:
+            hit = tuple(json.loads(_fp_cache_file().read_text(encoding="utf-8")).get(key) or ()) or None
+        except (OSError, ValueError, AttributeError):
+            hit = None
+    if hit and hit[0] == signature:
+        _FP_CACHE[key] = tuple(hit)
+        return hit[1]
     h = hashlib.sha256()
-    for p in sorted(x for x in root.rglob("*") if x.is_file()):
+    for p in files:
         h.update(p.relative_to(root).as_posix().encode("utf-8") + b"\0")
         h.update(p.read_bytes())
-    return h.hexdigest()
+    digest = h.hexdigest()
+    _FP_CACHE[key] = (signature, digest)
+    try:
+        f = _fp_cache_file()
+        try:
+            saved = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            saved = {}
+        saved[key] = [signature, digest]
+        f.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(f, json.dumps(saved), encoding="utf-8")
+    except OSError:
+        pass
+    return digest
 
 
 def stamp(mod_id: str) -> dict:

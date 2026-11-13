@@ -36,15 +36,8 @@ def _taskbar_identity() -> None:
 
 
 def remember_game_dir(path: str) -> None:
-    from .game import workspace
-    f = workspace() / "settings.json"
-    try:
-        settings = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
-    except (OSError, ValueError):
-        settings = {}
-    dirs = [d for d in settings.get("game_dirs", []) if isinstance(d, str) and d != path]
-    settings["game_dirs"] = [path] + dirs
-    f.write_text(json.dumps(settings, indent=1), encoding="utf-8")
+    from . import settings
+    settings.remember_game_dir(path)
 
 
 PICK_TITLE = "TESL Forge: choose your The Elder Scrolls Legends game folder"

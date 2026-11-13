@@ -25,8 +25,10 @@ tesl mod release <id> ...                version up with changelog notes (export
 tesl pack save --mod <id> --name "<pack>" --odds 79,15,4.5,1.5 --last-slot 0,80,15,5 ...   card packs for the store
 tesl pack list --mod <id> / remove --mod <id> --name "<pack>"
 tesl translate list --mod <id>; export|import --mod <id> --lang <code> [--out|--file <csv>]; set ... --english "<text>" --text "<translation>"
+tesl settings [--set blender=<path>] [--set game_dirs="<folder>;<folder>"]   this computer's settings (extra game folders, Blender, ffmpeg)
 tesl bulk cards --mod <id> --csv cards.csv [--art-dir <folder>]    many cards from a CSV
 tesl bulk art --mod <id> --dir <folder>                             art or remasters named after cards
+tesl bulk sounds --mod <id> --dir <folder>                          audio named after game sounds or '<card> Play.wav' voice lines
 tesl bulk music --mod <id> --dir <folder> --at <moments> [--mode replace|rotation]
 tesl search "<words>"                    search every mod
 tesl preview --mod <id> [--card <name>]  cards drawn by the game itself (game must be closed)

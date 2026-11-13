@@ -20,6 +20,7 @@ In the game: Play > Story, then the story's tile.
 """
 from __future__ import annotations
 from .fsutil import atomic_write, trash
+from .settings import find_tool as _tool
 
 import json
 import shutil
@@ -136,7 +137,7 @@ def add_file(mod_id: str, story: str, file: str, name: str | None = None) -> dic
             shutil.copyfile(src, out)
         else:
             out = d / (base + ".ogg")
-            ffmpeg = shutil.which("ffmpeg")
+            ffmpeg = _tool("ffmpeg")
             if not ffmpeg:
                 raise ValueError("converting MP3/FLAC/M4A needs ffmpeg (not found); add a WAV or OGG file instead")
             subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(src), "-c:a", "libvorbis", "-q:a", "6", str(out)], check=True)

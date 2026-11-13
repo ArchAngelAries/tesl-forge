@@ -40,9 +40,10 @@ def resolve(game: GameInstall, asset: str | None = None, card: str | None = None
     if not asset:
         raise ValueError("give --asset or --card")
     want = game_path(asset).lower()
-    for e in assets.load_index(game)["entries"]:
-        if e["kind"] == "texture" and game_path(e["path"]).lower() == want:
-            return e
+    textures = assets.lookup(assets.load_index(game), "texture-game-path",
+                             lambda e: game_path(e["path"]).lower() if e["kind"] == "texture" else None)
+    if textures.get(want) is not None:
+        return textures[want]
     raise ValueError(f"No texture asset '{asset}' in the game's bundles (search with: tesl assets list --kind texture --contains ...)")
 
 

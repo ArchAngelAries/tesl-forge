@@ -7,6 +7,7 @@ Layout: mods/<id>/avatars/avatars.json + the PNG files beside it.
 """
 from __future__ import annotations
 from .fsutil import atomic_write, trash
+from .settings import find_tool as _tool
 
 import json
 from pathlib import Path
@@ -112,7 +113,7 @@ def _to_wav(src: Path, dest: Path) -> float:
                 return w.getnframes() / w.getframerate()
     except (wave.Error, EOFError):
         pass
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = _tool("ffmpeg")
     if not ffmpeg:
         raise ValueError(f"{src.name} is not a plain WAV and ffmpeg was not found to convert it")
     subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(src), "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", str(dest)], check=True)

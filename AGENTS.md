@@ -22,7 +22,7 @@ single JSON object on stdout; failures exit non-zero with `{"error": "..."}`.
 | New card | `tesl --json card new --mod <mod-id> --name "<name>" --template "<existing card>" [--cost N --attack N --health N] [--rarity R] [--text "..."] [--rules-from "<card whose rules to copy>"] [--no-rules] [--art <png/jpg>]` |
 | A card's abilities (rule editor) | `tesl --json card abilities "<card>"` (ids like `triggered:0`, editable parameters with paths) |
 | Card with built rules | `tesl --json card new ... --keywords "Guard,Charge,Rally=2" --abilities '[{"card": "Fiery Imp", "ability": "triggered:0", "params": {"<path>": 3}}]'` |
-| New deck | `tesl --json deck new --mod <mod-id> --name "<name>" --cards "Card A x3, Card B x2, ..." [--art-card "<card>"]` |
+| New deck | `tesl --json deck new --mod <mod-id> --name "<name>" --cards "Card A x3; Card B x2; ..." [--art-card "<card>"]` (separate with `;` or new lines, or give a JSON array; names containing commas, like "Miraak, Dragonborn", need `;`/lines/array) |
 | Replace an original image (remaster) | `tesl --json replace image --mod <mod-id> (--card "<card>" \| --asset <asset path>) --image <png/jpg> [--fit crop\|stretch]` |
 | List / undo replacements | `tesl --json replace list --mod <mod-id>` / `tesl --json replace remove --mod <mod-id> --asset <path>` |
 | New avatar choice | `tesl --json avatar new --mod <mod-id> --name "<name>" --image <png/jpg> [--voice <original avatar>] [--head 0.22] [--profile <png/jpg>]` (`--profile`: own picture for the round profile portrait) |

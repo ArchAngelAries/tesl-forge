@@ -54,7 +54,8 @@ def _steam_libraries() -> list[Path]:
                 roots.append(Path(winreg.QueryValueEx(k, "SteamPath")[0]))
         except OSError:
             pass
-    roots.append(Path(r"C:\Program Files (x86)\Steam"))
+    from . import settings
+    roots += settings.steam_roots()
     libs: list[Path] = []
     for r in roots:
         vdf = r / "steamapps" / "libraryfolders.vdf"
@@ -90,13 +91,10 @@ def _candidates() -> list[Path]:
         found.append(Path(env))
     # The suite lives next to the game folder of the version it mods.
     found.append(CODE_ROOT.parent / GAME_FOLDER)
-    # More install folders (a second copy, a Bethesda.net install): workspace/settings.json {"game_dirs": [...]},
+    # More install folders (a second copy, a Bethesda.net install): "game_dirs" in workspace/settings.json (tesl settings),
     # kept on this computer only.
-    try:
-        settings = json.loads((SUITE_ROOT / "workspace" / "settings.json").read_text(encoding="utf-8"))
-        found += [Path(d) for d in settings.get("game_dirs", []) if isinstance(d, str)]
-    except (OSError, ValueError):
-        pass
+    from . import settings
+    found += [Path(d) for d in settings.get("game_dirs")]
     # Steam libraries (the installed app lives elsewhere)
     found += [lib / "steamapps" / "common" / GAME_FOLDER for lib in _steam_libraries()]
     return found

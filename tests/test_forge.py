@@ -7,15 +7,20 @@ sample mod, other mods or the enabled-mod list. Tests that need the game's card 
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
+import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
 import uuid
 from http.server import ThreadingHTTPServer
+from pathlib import Path
+from unittest import mock
 
-from tesl_suite import compat, details, fsutil, mods, opponents, packs, search, starters, translations
+from tesl_suite import assets, bulk, compat, details, fsutil, mods, opponents, packs, search, settings, starters, translations
 from tesl_suite.game import workspace
 
 try:
@@ -253,5 +258,229 @@ class ApiSafety(unittest.TestCase):
         self.assertIn(status, (400, 403, 404))
 
 
+class DeckSpecs(unittest.TestCase):
+    """Deck lists: ";" / new lines / a real list / a JSON array, and card names that contain commas."""
+
+    def names(self, spec):
+        return [(c["Name"], n) for c, n in mods.deck_entries(GAME, spec)]
+
+    @needs_game
+    def test_semicolons_and_new_lines(self):
+        want = [("Miraak, Dragonborn", 2), ("Fiery Imp", 3), ("Ayrenn, Dominion Queen", 1)]
+        self.assertEqual(self.names("Miraak, Dragonborn x2; Fiery Imp x3; Ayrenn, Dominion Queen"), want)
+        self.assertEqual(self.names("Miraak, Dragonborn x2\nFiery Imp x3\nAyrenn, Dominion Queen"), want)
+
+    @needs_game
+    def test_real_lists(self):
+        want = [("Miraak, Dragonborn", 2), ("Fiery Imp", 3)]
+        self.assertEqual(self.names(["Miraak, Dragonborn x2", "Fiery Imp x3"]), want)
+        self.assertEqual(self.names([{"name": "Miraak, Dragonborn", "count": 2}, {"name": "Fiery Imp", "count": 3}]), want)
+        self.assertEqual(self.names(json.dumps(["Miraak, Dragonborn x2", "Fiery Imp x3"])), want)
+        self.assertEqual(self.names([["Miraak, Dragonborn", 2], ["Fiery Imp", 3]]), want)
+        fiery = mods.find_card(GAME, "Fiery Imp")["ResourceId"]["Id"]
+        self.assertEqual(self.names([{"id": fiery, "count": 2}]), [("Fiery Imp", 2)])
+
+    @needs_game
+    def test_old_comma_specs_still_work(self):
+        self.assertEqual(self.names("Fiery Imp x3, Fiery Imp"), [("Fiery Imp", 3), ("Fiery Imp", 1)])
+        self.assertEqual(self.names("Fiery Imp x3, Miraak, Dragonborn x2, Fiery Imp"),
+                         [("Fiery Imp", 3), ("Miraak, Dragonborn", 2), ("Fiery Imp", 1)])
+        self.assertEqual(self.names("Miraak, Dragonborn, Fiery Imp x2"), [("Miraak, Dragonborn", 1), ("Fiery Imp", 2)])
+
+    @needs_game
+    def test_unknown_card_is_a_clear_error(self):
+        with self.assertRaises(ValueError) as cm:
+            mods.deck_entries(GAME, "Fiery Imp x3; No Such Card Anywhere")
+        self.assertIn("No Such Card Anywhere", str(cm.exception))
+        with self.assertRaises(ValueError):
+            mods.deck_entries(GAME, "")
+
+    @needs_game
+    def test_api_passes_lists_through(self):
+        spec = [{"name": "Miraak, Dragonborn", "count": 2}]
+        self.assertEqual(api._deck_spec(spec), spec)
+        self.assertEqual(api._deck_spec("A x2, B"), "A x2, B")
+        self.assertEqual(self.names(api._deck_spec(spec)), [("Miraak, Dragonborn", 2)])
+
+
+class Settings(unittest.TestCase):
+    """Machine-specific places come from the settings file, the registry, the environment or PATH: never from the code."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="forge-settings-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        p = mock.patch.object(settings, "path", lambda: self.tmp / "workspace" / "settings.json")
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_defaults_are_empty(self):
+        s = settings.load()
+        self.assertEqual((s["game_dirs"], s["steam_dirs"], s["blender"], s["ffmpeg"]), ([], [], "", ""))
+
+    def test_save_roundtrip_keeps_other_keys(self):
+        f = settings.path()
+        f.parent.mkdir(parents=True)
+        f.write_text(json.dumps({"game_dirs": ["X:/one"], "future_key": 5}), encoding="utf-8")
+        out = settings.save({"steam_dirs": "X:/s1;X:/s2"})
+        self.assertEqual(out["steam_dirs"], ["X:/s1", "X:/s2"])
+        self.assertEqual(out["game_dirs"], ["X:/one"])
+        self.assertEqual(json.loads(f.read_text(encoding="utf-8"))["future_key"], 5)
+        settings.remember_game_dir("X:/two")
+        self.assertEqual(settings.get("game_dirs"), ["X:/two", "X:/one"])
+
+    def test_unknown_key_and_missing_file_refused(self):
+        with self.assertRaises(ValueError):
+            settings.save({"nonsense": 1})
+        with self.assertRaises(ValueError):
+            settings.save({"blender": str(self.tmp / "nope" / "blender.exe")})
+
+    def test_game_dirs_feed_the_candidates(self):
+        from tesl_suite import game
+        settings.save({"game_dirs": [str(self.tmp / "my-tesl")]})
+        self.assertIn(self.tmp / "my-tesl", game._candidates())
+
+    def test_blender_setting_beats_search_and_search_uses_environment(self):
+        exe = self.tmp / "pf" / "Blender Foundation" / "Blender 4.2" / "blender.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"")
+        with mock.patch("shutil.which", return_value=None), mock.patch.dict(os.environ, {v: str(self.tmp / "pf") for v in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)")}):
+            self.assertEqual(settings.find_blender(), str(exe))
+            other = self.tmp / "mine" / "blender.exe"
+            other.parent.mkdir()
+            other.write_bytes(b"")
+            settings.save({"blender": str(other)})
+            self.assertEqual(settings.find_blender(), str(other))
+
+    def test_ffmpeg_setting(self):
+        exe = self.tmp / "ff" / "ffmpeg.exe"
+        exe.parent.mkdir()
+        exe.write_bytes(b"")
+        with mock.patch("shutil.which", return_value=None):
+            self.assertIsNone(settings.find_tool("ffmpeg"))
+            settings.save({"ffmpeg": str(exe)})
+            self.assertEqual(settings.find_tool("ffmpeg"), str(exe))
+
+    def test_no_machine_paths_in_the_code(self):
+        root = Path(__file__).resolve().parent.parent
+        rx = re.compile(r"\b[A-Za-z]:[\\/]+(?:Program Files|Users|Gaming|Games|Steam|SteamLibrary)|[\\/]Users[\\/][A-Za-z0-9._-]+[\\/]", re.I)
+        offenders = []
+        for folder in ("tesl_suite", "tools"):
+            for f in (root / folder).rglob("*"):
+                rel = f.relative_to(root).parts
+                if f.suffix in (".py", ".js", ".html", ".cmd", ".iss") and rel[:2] != ("tesl_suite", "data") and f.name != "privacy_scan.py":
+                    for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                        if rx.search(line):
+                            offenders.append(f"{f.relative_to(root)}:{n}: {line.strip()[:80]}")
+        self.assertEqual(offenders, [])
+
+
+class Caching(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="forge-cache-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        for target, name, value in ((mods, "MODS", self.tmp / "mods"), (compat, "_fp_cache_file", lambda: self.tmp / "fp.json")):
+            p = mock.patch.object(target, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+        compat._FP_CACHE.clear()
+        mods._CARD_FILES.clear()
+        self.root = self.tmp / "mods" / "zz-cache"
+        (self.root / "cards").mkdir(parents=True)
+        (self.root / "mod.json").write_text('{"id": "zz-cache"}', encoding="utf-8")
+        (self.root / "art.bin").write_bytes(b"abc" * 1000)
+        self.card = self.root / "cards" / "a.json"
+        self.card.write_text(json.dumps({"Name": "A", "ResourceId": {"Id": 1, "UniqueName": "a"}}), encoding="utf-8")
+
+    def naive(self):
+        import hashlib
+        h = hashlib.sha256()
+        for p in sorted(x for x in self.root.rglob("*") if x.is_file()):
+            h.update(p.relative_to(self.root).as_posix().encode("utf-8") + b"\0")
+            h.update(p.read_bytes())
+        return h.hexdigest()
+
+    def test_fingerprint_value_is_unchanged_and_reused(self):
+        first = compat.fingerprint("zz-cache")
+        self.assertEqual(first, self.naive())
+        with mock.patch.object(Path, "read_bytes", side_effect=AssertionError("hashed again")):
+            self.assertEqual(compat.fingerprint("zz-cache"), first)
+            compat._FP_CACHE.clear()      # a new run: remembered in the cache file
+            self.assertEqual(compat.fingerprint("zz-cache"), first)
+
+    def test_fingerprint_follows_changes(self):
+        before = compat.fingerprint("zz-cache")
+        (self.root / "art.bin").write_bytes(b"abd" * 1000)       # same size; the modification time differs
+        os.utime(self.root / "art.bin", ns=(10**18, 10**18))
+        after = compat.fingerprint("zz-cache")
+        self.assertNotEqual(before, after)
+        self.assertEqual(after, self.naive())
+        (self.root / "new.txt").write_text("x", encoding="utf-8")
+        self.assertEqual(compat.fingerprint("zz-cache"), self.naive())
+
+    def test_card_files_are_read_once_until_they_change(self):
+        self.assertEqual(mods.mod_cards("zz-cache")[0]["Name"], "A")
+        with mock.patch.object(Path, "read_text", side_effect=AssertionError("read again")):
+            cards = mods.mod_cards("zz-cache")
+            cards[0]["Name"] = "changed by caller"
+            self.assertEqual(mods.mod_cards("zz-cache")[0]["Name"], "A", "callers get their own copies")
+            self.assertEqual(mods.mod_cards_shared("zz-cache")[0]["Name"], "A")
+        self.card.write_text(json.dumps({"Name": "B", "ResourceId": {"Id": 1, "UniqueName": "a"}}), encoding="utf-8")
+        os.utime(self.card, ns=(10**18, 10**18))
+        self.assertEqual(mods.mod_cards("zz-cache")[0]["Name"], "B")
+
+    def test_asset_lookups_are_built_once(self):
+        index = {"entries": [{"path": "Assets/X/One.png", "kind": "texture", "bundle": "b"}, {"path": "Assets/X/Two.png", "kind": "texture", "bundle": "b"}]}
+        calls = []
+
+        def key(e):
+            calls.append(1)
+            return e["path"].lower()
+        t1 = assets.lookup(index, "t", key)
+        t2 = assets.lookup(index, "t", key)
+        self.assertIs(t1, t2)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(assets.by_path(index)["assets/x/two.png"]["bundle"], "b")
+        self.assertIs(assets.by_path(index), assets.by_path(index))
+
+    def test_asset_index_is_parsed_once(self):
+        f = self.tmp / "asset-index.json"
+        f.write_text(json.dumps({"game": "G", "entries": []}), encoding="utf-8")
+        fake = type("G", (), {"root": "G"})()
+        with mock.patch.object(assets, "index_path", lambda: f):
+            assets._INDEX_CACHE.clear()
+            a = assets.load_index(fake)
+            with mock.patch.object(Path, "read_text", side_effect=AssertionError("parsed again")):
+                self.assertIs(assets.load_index(fake), a)
+            f.write_text(json.dumps({"game": "G", "entries": [{"path": "p", "kind": "other", "bundle": "b"}]}), encoding="utf-8")
+            os.utime(f, ns=(10**18, 10**18))
+            self.assertEqual(len(assets.load_index(fake)["entries"]), 1)
+
+
+class BulkSounds(unittest.TestCase):
+    @needs_game
+    def test_files_are_matched_by_name_with_a_result_each(self):
+        from tesl_suite import sounds
+        snd = next(s for s in sounds.catalog(GAME) if s["id"].startswith("announcer:") and len(s["clips"]) == 1)
+        calls = []
+        with mock.patch.object(sounds, "replace_sound", lambda g, m, sid, files, vol=1.0: calls.append((sid, files))), \
+                mock.patch.object(bulk, "read_mod", lambda m: {}), mock.patch.object(bulk, "mod_cards", lambda m: []):
+            r = bulk.sounds_by_name(GAME, "x", {snd["clips"][0] + ".wav": "/tmp/a.wav", "nothing matches this.wav": "/tmp/b.wav"})
+        self.assertEqual(calls, [(snd["id"], ["/tmp/a.wav"])])
+        self.assertEqual([x["file"] for x in r["rows"]], [snd["clips"][0] + ".wav"])
+        self.assertEqual([x["file"] for x in r["failed"]], ["nothing matches this.wav"])
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class SmallFrames(unittest.TestCase):
+    """Deck-list band centred on the face; history/hover shift never leaves part of the frame empty."""
+    def test_values(self):
+        from tesl_suite.framing import small_frames
+        f = small_frames(0.15)
+        self.assertAlmostEqual(0.41 + f["ListImageOffsetY"] + 0.09, 0.15, places=3)
+        self.assertLessEqual(abs(f["HistoryLogItemImageOffsetY"]), (f["HistoryLogItemImageScale"] - 1) / 2 + 1e-9)
+        self.assertEqual(f["HangerImageOffsetY"], 0.0)   # scale 1 leaves no room to move
+        self.assertGreaterEqual(small_frames(0.0)["ListImageOffsetY"], -0.41)
+

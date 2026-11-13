@@ -80,8 +80,29 @@ def _original_cards(game: GameInstall) -> dict[int, dict]:
     return _ORIGINALS["by_id"]
 
 
+_CARD_FILES: dict = {}      # card file -> (size, mtime_ns, text, parsed)
+
+
+def _card_entries(mod_id: str) -> list[tuple]:
+    out = []
+    for p in sorted((mod_dir(mod_id) / "cards").glob("*.json")):
+        st = p.stat()
+        hit = _CARD_FILES.get(str(p))
+        if hit is None or hit[0] != st.st_size or hit[1] != st.st_mtime_ns:
+            text = p.read_text(encoding="utf-8")
+            hit = _CARD_FILES[str(p)] = (st.st_size, st.st_mtime_ns, text, json.loads(text))
+        out.append(hit)
+    return out
+
+
 def mod_cards(mod_id: str) -> list[dict]:
-    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted((mod_dir(mod_id) / "cards").glob("*.json"))]
+    """A mod's cards as fresh copies you may change. Files are read only when they changed (size + modification time)."""
+    return [json.loads(e[2]) for e in _card_entries(mod_id)]
+
+
+def mod_cards_shared(mod_id: str) -> list[dict]:
+    """The same cards without copying: shared, read-only (the way originals are shared). For lookups."""
+    return [e[3] for e in _card_entries(mod_id)]
 
 
 def all_mod_ids() -> list[str]:
@@ -96,11 +117,11 @@ def find_card(game: GameInstall, ref: str, originals: dict[int, dict] | None = N
         if card:
             return card
         for mid in all_mod_ids():
-            for c in mod_cards(mid):
+            for c in mod_cards_shared(mid):
                 if c["ResourceId"]["Id"] == int(ref):
                     return c
     for mid in all_mod_ids():
-        for c in mod_cards(mid):
+        for c in mod_cards_shared(mid):
             if c["Name"].lower() == ref.strip().lower() or f"mod:{mid}/{c['ResourceId']['UniqueName']}" == ref.strip():
                 return c
     named = [c for c in originals.values() if (c.get("Name") or "").lower() == ref.strip().lower()]
@@ -254,6 +275,8 @@ def new_card(game: GameInstall, mod_id: str, name: str, template: str, cost=None
     from .framing import top_frame
     frame = top_frame()
     card["ImageScale"], card["ImageOffsetX"], card["ImageOffsetY"] = frame["scale"], frame["x"], frame["y"]
+    from .framing import small_frames
+    card.update(small_frames())   # deck list / history / hover views centred on the face height of generated art
     art_info = None
     if art:
         art_info = import_art(Path(art), mod_dir(mod_id) / "art" / f"{slug}.png")
@@ -263,31 +286,62 @@ def new_card(game: GameInstall, mod_id: str, name: str, template: str, cost=None
             "notes": composed["notes"] if composed else []}, "art": art_info}
 
 
+def _deck_pieces(game: GameInstall, cards_spec, originals: dict) -> list:
+    """Split a deck list into pieces ("Name x3" strings, or (ref, count) pairs for list entries that give a count)."""
+    if isinstance(cards_spec, str) and cards_spec.lstrip().startswith("["):
+        try:
+            cards_spec = json.loads(cards_spec)         # a JSON array given as text (CLI, MCP clients that stringify)
+        except ValueError:
+            pass
+    if isinstance(cards_spec, (list, tuple)):
+        pieces = []
+        for e in cards_spec:
+            if isinstance(e, dict):
+                ref = e.get("name") if e.get("name") not in (None, "") else e.get("id")
+                if ref in (None, ""):
+                    raise ValueError(f"a deck entry needs a card name or id: {e}")
+                pieces.append((str(ref).strip(), int(e.get("count", 1))))
+            elif isinstance(e, (list, tuple)) and len(e) == 2:
+                pieces.append((str(e[0]).strip(), int(e[1])))
+            else:
+                pieces.append(str(e).strip())
+        return pieces
+    cards_spec = str(cards_spec)
+    if ";" in cards_spec or "\n" in cards_spec:
+        return [p.strip() for p in re.split(r"[;\n]", cards_spec)]
+    raw, pieces, i = [p.strip() for p in cards_spec.split(",")], [], 0
+    while i < len(raw):
+        if i + 1 < len(raw):
+            joined = raw[i] + ", " + raw[i + 1]
+            m = re.fullmatch(r"(.+?)\s*[x*]\s*(\d+)", joined)
+            try:
+                find_card(game, m.group(1) if m else joined, originals)
+                pieces.append(joined); i += 2; continue
+            except (ValueError, KeyError):
+                pass
+        pieces.append(raw[i]); i += 1
+    return pieces
+
+
 def deck_entries(game: GameInstall, cards_spec, originals: dict | None = None) -> list[tuple[dict, int]]:
-    """Cards of a deck list: a list, or text with entries separated by ";", new lines or commas ("Name x3"). Names that contain
-    commas ("Miraak, Dragonborn") are found by joining neighbouring pieces when the joined text is a card."""
+    """Cards of a deck list. Forms: a real list (strings "Name x3", {name|id, count} objects or [name, count] pairs), a JSON
+    array as text, or text with entries separated by ";" or new lines. Comma-separated text still works too ("A x3, B x2");
+    a name that contains commas ("Miraak, Dragonborn") is found by joining neighbouring pieces when the joined text is a
+    card name. Use ";", new lines or a list when in doubt."""
     originals = originals if originals is not None else _original_cards(game)
-    if isinstance(cards_spec, list):
-        pieces = [str(p).strip() for p in cards_spec]
-    elif ";" in cards_spec or "\n" in cards_spec:
-        pieces = [p.strip() for p in re.split(r"[;\n]", cards_spec)]
-    else:
-        raw, pieces, i = [p.strip() for p in cards_spec.split(",")], [], 0
-        while i < len(raw):
-            if i + 1 < len(raw):
-                joined = raw[i] + ", " + raw[i + 1]
-                m = re.fullmatch(r"(.+?)\s*[x*]\s*(\d+)", joined)
-                try:
-                    find_card(game, m.group(1) if m else joined, originals)
-                    pieces.append(joined); i += 2; continue
-                except ValueError:
-                    pass
-            pieces.append(raw[i]); i += 1
+    pieces = _deck_pieces(game, cards_spec, originals)
     out = []
     for part in [p for p in pieces if p]:
-        m = re.fullmatch(r"(.+?)\s*[x*]\s*(\d+)", part)
-        ref, count = (m.group(1), int(m.group(2))) if m else (part, 1)
-        out.append((find_card(game, ref, originals), count))
+        if isinstance(part, tuple):
+            ref, count = part
+        else:
+            m = re.fullmatch(r"(.+?)\s*[x*]\s*(\d+)", part)
+            ref, count = (m.group(1), int(m.group(2))) if m else (part, 1)
+        try:
+            card = find_card(game, ref, originals)
+        except KeyError as e:
+            raise ValueError(e.args[0] if e.args else str(e))
+        out.append((card, count))
     if not out:
         raise ValueError("the deck list is empty")
     return out
@@ -363,6 +417,7 @@ def validate(game: GameInstall, mod_id: str) -> dict:
         if not (mod_dir(mod_id) / "art" / f"{slug}.png").is_file():
             warnings.append(f"{slug}: no art (art/{slug}.png); the card shows a blank picture")
     mod_ids = set(ids)
+    own_by_id = {c["ResourceId"]["Id"]: c for c in mod_cards_shared(mod_id)}
     for p in sorted((mod_dir(mod_id) / "decks").glob("*.json")):
         d = json.loads(p.read_text(encoding="utf-8"))
         for e in d.get("cards", []):
@@ -370,7 +425,7 @@ def validate(game: GameInstall, mod_id: str) -> dict:
                 errors.append(f"deck {p.stem}: card {e.get('name')} ({e['id']}) not found")
         resolved = []
         for e in d.get("cards", []):
-            card = originals.get(e["id"]) or next((c for c in mod_cards(mod_id) if c["ResourceId"]["Id"] == e["id"]), None)
+            card = originals.get(e["id"]) or own_by_id.get(e["id"])
             if card:
                 resolved.append((card, e["count"]))
         for problem in deck_rules(resolved):

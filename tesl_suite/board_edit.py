@@ -294,12 +294,9 @@ def edit_animation(mod_id: str, board: str, path: str, enabled=None, speed=None,
 
 # ---- new things ---------------------------------------------------------------------------------------------------------
 def blender() -> str | None:
-    found = shutil.which("blender")
-    if found:
-        return found
-    roots = [Path(r"C:\Program Files\Blender Foundation"), Path(r"C:\Program Files (x86)\Steam\steamapps\common\Blender")]
-    exes = sorted((p for r in roots if r.is_dir() for p in r.rglob("blender.exe")), key=lambda p: p.parent.name, reverse=True)
-    return str(exes[0]) if exes else None
+    """blender.exe: the 'blender' setting, PATH, or the usual install folders (settings.find_blender)."""
+    from . import settings
+    return settings.find_blender()
 
 
 _BLENDER_SCRIPT = r'''

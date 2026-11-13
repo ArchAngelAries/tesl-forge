@@ -67,4 +67,4 @@ restores the original appearance and content; original files are never modified.
 5. Rule authoring UI and validator; headless test runs; game modes. Done: rule editor (keywords + abilities from any card
    with editable amounts and card references; `tesl card abilities`, app Cards page, MCP `card_abilities`/`new_card`).
 6. Web UI and packaged installer. Done: the web app (tesl_suite/web, no build step) served by `tesl serve`, the native window
-   and the Windows installer (`TESL-Forge-Setup-1.0.0.exe`).
+   and the Windows installer (`TESL-Forge-Setup-<version>.exe`).

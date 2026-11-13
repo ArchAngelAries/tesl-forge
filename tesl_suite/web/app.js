@@ -701,6 +701,14 @@ async function audioSupportBar(main) {
   main.append(h("div", { class: "panel toolbar" }, btn, msg));
 }
 
+// One line per dropped file: what it replaced, or why it could not be matched.
+function soundReport(box, r, names) {
+  box.innerHTML = "";
+  const ok = new Map(r.rows.map(x => [x.file, x.action])), bad = new Map(r.failed.map(x => [x.file, x.error]));
+  box.append(h("div", { class: "msg " + (r.failed.length ? "warn" : "ok") }, `${r.imported} of ${names.length} file${names.length > 1 ? "s" : ""} used${r.failed.length ? `, ${r.failed.length} could not be matched` : ""}. Changes apply at the game's next start.`));
+  for (const n of names) box.append(bad.has(n) ? h("div", { class: "msg error" }, `${n} - ${bad.get(n)}`) : h("div", { class: "msg ok" }, `${n} - ${ok.get(n) || "done"}`));
+}
+
 VIEWS.sounds = async main => {
   const d = state.detail;
   main.append(h("h1", {}, "Sounds & voices"), h("p", { class: "sub" }, "Give your cards their own voice lines, and replace any of the game's sounds: card voices and effects, emote lines, story dialogue, the arena announcer, interface sounds. Files of any common format are stored as OGG."));
@@ -737,6 +745,15 @@ VIEWS.sounds = async main => {
       await act(() => api(`/api/mods/${state.mod}/sounds?sound=${encodeURIComponent(s.sound)}`, { method: "DELETE" }), "Original sound restored"); refresh(); } }, "Restore original")));
   if (!(d.sounds || []).length) reps.append(h("p", { class: "sub" }, "None yet: find a sound below."));
   main.append(reps);
+  // many sounds at once, matched by file name
+  main.append(h("h2", {}, "Replace many sounds at once"));
+  const manyOut = h("div", {});
+  main.append(h("div", { class: "panel" },
+    h("p", { class: "sub", style: "margin-top:0" }, "Drop several audio files. Each is matched to a game sound by its file name (\"Arena End.wav\", or the name of one of its original clips such as \"arena_end_resign.ogg\"), or to one of your cards' voice lines (\"Whiterun Wolfcaller Play.wav\", with Play, Attack, Death, Hit, Success or Failure). Files that match the same sound become its takes. Every file gets its own result line; one Ctrl+Z undoes the whole drop."),
+    multiDrop("Drop audio files named after sounds", "audio/*", async files => {
+      if (!Object.keys(files).length) return;
+      const r = await act(() => api(`/api/mods/${state.mod}/bulk/sounds`, { method: "POST", body: { files } }), null);
+      if (r) soundReport(manyOut, r, Object.keys(files)); }), manyOut));
   // search
   main.append(h("h2", {}, "Find a game sound"));
   const q = h("input", { placeholder: "e.g. fiery imp, taunt, sheogorath, click" });
@@ -749,8 +766,10 @@ VIEWS.sounds = async main => {
     results.append(h("p", { class: "sub" }, `${r.total} sounds${r.total > r.sounds.length ? ", showing " + r.sounds.length : ""}`));
     for (const s of r.sounds) {
       const box = h("div", { style: "display:none;margin-top:6px" });
-      box.append(dropZone("Drop your replacement (one or more files)", "audio/*", async p => {
-        await act(() => api(`/api/mods/${state.mod}/sounds`, { method: "POST", body: { sound: s.id, files: [p] } }), `${s.label} replaced`); refresh(); }));
+      box.append(multiDrop("Drop your replacement (one or more files: several are picked at random)", "audio/*", async files => {
+        const paths = Object.values(files);
+        if (!paths.length) return;
+        await act(() => api(`/api/mods/${state.mod}/sounds`, { method: "POST", body: { sound: s.id, files: paths } }), `${s.label} replaced (${paths.length} file${paths.length > 1 ? "s" : ""})`); refresh(); }));
       results.append(h("div", { style: "padding:6px 0;border-bottom:1px solid var(--line)" },
         h("div", { class: "row", style: "align-items:center;gap:10px" },
           h("div", { style: "flex:1;min-width:0" }, h("b", {}, s.label), h("br"), h("small", { class: "sub" }, `${s.category_label} · ${s.clips.length} take(s)` +
@@ -989,6 +1008,23 @@ VIEWS.bulk = async main => {
       if (!ctx.size) return toast("Choose where the tracks play first.", true);
       const r = await act(() => api(`/api/mods/${state.mod}/bulk/music`, { method: "POST", body: { files, contexts: [...ctx], mode: mode.value } }), null);
       if (r) bulkReport(musicOut, r); }), musicOut));
+};
+
+VIEWS.settings = async main => {
+  const st = await api("/api/settings");
+  main.append(h("h1", {}, "Settings"), h("p", { class: "sub" }, "Settings of this computer, kept in the Forge folder (workspace/settings.json) and never shared with a mod. Leave a path empty and TESL Forge finds the program by itself."));
+  const dirs = h("textarea", { rows: 3, placeholder: "One folder per line" }, (st.game_dirs || []).join("\n"));
+  const steam = h("textarea", { rows: 2, placeholder: "One folder per line (optional)" }, (st.steam_dirs || []).join("\n"));
+  const blender = h("input", { value: st.blender || "", placeholder: st.blender_found ? "found: " + st.blender_found : "not found: only needed for FBX, .blend, DAE, 3DS, STL, PLY and USD models" });
+  const ffmpeg = h("input", { value: st.ffmpeg || "", placeholder: st.ffmpeg_found ? "found: " + st.ffmpeg_found : "not found: needed to convert MP3, FLAC and M4A" });
+  const lines = t => t.value.split("\n").map(x => x.trim()).filter(Boolean);
+  main.append(h("div", { class: "panel" },
+    field("Extra game folders", dirs, "More installs of The Elder Scrolls Legends (a second copy, a Bethesda.net install). The one next to TESL Forge and your Steam libraries are found automatically."),
+    field("Extra Steam folders", steam, "Only if Steam keeps your games somewhere TESL Forge does not look."),
+    field("Blender (blender.exe)", blender), field("ffmpeg", ffmpeg),
+    h("div", { class: "toolbar" }, h("span", { class: "grow" }), h("button", { class: "primary", onclick: async () => {
+      const r = await act(() => api("/api/settings", { method: "POST", body: { game_dirs: lines(dirs), steam_dirs: lines(steam), blender: blender.value.trim(), ffmpeg: ffmpeg.value.trim() } }), "Settings saved");
+      if (r) route(); } }, "Save"))));
 };
 
 VIEWS.translations = async main => {

@@ -6,13 +6,13 @@ This walks you from install to seeing your own card in the game.
 
 1. Install *The Elder Scrolls: Legends* and **TESL: Everlasting** (see its Getting started guide). Start the game offline
    once so your profile exists.
-2. Run `TESL-Forge-Setup-1.0.0.exe` (no administrator prompt, no Python needed), then open **TESL Forge** from the
+2. Run `TESL-Forge-Setup-1.0.1.exe` (no administrator prompt, no Python needed), then open **TESL Forge** from the
    Start menu. If it can't find the game in your Steam libraries, it asks for the game folder once. Your mods live in
    `Documents\TESL Forge`.
-   *Or, with the zip:* install [Python 3.10 or newer](https://www.python.org/downloads/), unzip `TESL-Forge-1.0.0.zip`
+   *Or, with the zip:* install [Python 3.10 or newer](https://www.python.org/downloads/), unzip `TESL-Forge-1.0.1.zip`
    outside the game folder, double-click **Set up TESL Forge.cmd** once, then **Open TESL Forge.cmd**.
 3. TESL Forge opens in its own window and records its location so TESL: Everlasting can find your mods. A short tour shows you around (press `?` any time for help).
-4. Optional: install the sample mod. On **Load order & compatibility**, drop `TESL-Forge-Sample-Mod-1.0.0.zip` on
+4. Optional: install the sample mod. On **Load order & compatibility**, drop `TESL-Forge-Sample-Mod-1.0.1.zip` on
    *Install a mod*.
 5. Optional: pick a theme and text size at the bottom of the sidebar.
 

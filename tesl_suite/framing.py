@@ -117,3 +117,18 @@ def set_frame(mod_id: str, card: str, scale: float, x: float, y: float) -> dict:
     atomic_write(path, json.dumps(c, indent=1, ensure_ascii=False))
     return {"mod": mod_id, "card": c.get("Name"), "before": before, "after": {"scale": c["ImageScale"], "x": c["ImageOffsetX"], "y": c["ImageOffsetY"]},
             "inside_picture": visible_inside(scale, x, y)}
+
+
+def small_frames(focus: float = 0.15, hanger_scale: float = 1.0, history_scale: float = 1.75) -> dict:
+    """Framing of the small views (deck list row, history log, hover strip) for art whose subject's face or centre sits at
+    height `focus` (0 = top). Measured with the game's own deck-list row (2026-11-13): at ListImageScale 1 the row shows an
+    18%-tall band whose top is at 0.41 + ListImageOffsetY, so the band is centred on the focus; ListImageOffsetX 0.12 moves a
+    centred face right of the card name (the art centre otherwise sits at 66% of the row, under longer names). History and hover views
+    shift towards the focus only as far as the art still fills their frame. Generated portraits have faces near 0.12-0.17."""
+    def clamp(v, lo, hi):
+        return max(lo, min(hi, v))
+    out = {"ListImageScale": 1.0, "ListImageOffsetX": 0.12, "ListImageOffsetY": round(clamp(focus - 0.50, -0.41, 0.41), 3)}
+    for pre, s in (("HangerImage", hanger_scale), ("HistoryLogItemImage", history_scale)):
+        room = max(0.0, (s - 1.0) / 2.0)
+        out[pre + "Scale"], out[pre + "OffsetX"], out[pre + "OffsetY"] = s, 0.0, round(clamp((focus - 0.5) * s, -room, room), 3)
+    return out

@@ -69,13 +69,52 @@ def build_index(game: GameInstall) -> dict:
     return index
 
 
+_INDEX_CACHE: dict = {}      # asset-index.json path -> (size, mtime_ns, parsed index)
+_LOOKUPS: dict = {}          # id(index) -> (index, {name: lookup dict})
+
+
 def load_index(game: GameInstall) -> dict:
+    """The asset index. Parsed once per process and re-read only when asset-index.json changed (size + modification time)."""
     path = index_path()
     if path.is_file():
+        st = path.stat()
+        hit = _INDEX_CACHE.get(str(path))
+        if hit and hit[0] == st.st_size and hit[1] == st.st_mtime_ns and hit[2].get("game") == game.root:
+            return hit[2]
         index = json.loads(path.read_text(encoding="utf-8"))
         if index.get("game") == game.root:
+            _INDEX_CACHE[str(path)] = (st.st_size, st.st_mtime_ns, index)
             return index
-    return build_index(game)
+    index = build_index(game)
+    st = index_path().stat()
+    _INDEX_CACHE[str(index_path())] = (st.st_size, st.st_mtime_ns, index)
+    return index
+
+
+def lookup(index: dict, name: str, key, first: bool = True) -> dict:
+    """{key(entry): entry} over the whole index, built once per index and name (not on every call). With first=False the
+    last entry of a duplicate key wins. Treat the result as read-only."""
+    held = _LOOKUPS.get(id(index))
+    if held is None or held[0] is not index:
+        if len(_LOOKUPS) > 4:
+            _LOOKUPS.clear()
+        held = _LOOKUPS[id(index)] = (index, {})
+    table = held[1].get(name)
+    if table is None:
+        table = {}
+        for e in index["entries"]:
+            k = key(e)
+            if first:
+                table.setdefault(k, e)
+            else:
+                table[k] = e
+        held[1][name] = table
+    return table
+
+
+def by_path(index: dict) -> dict:
+    """Entries by lower-case asset path."""
+    return lookup(index, "path", lambda e: e["path"].lower(), first=False)
 
 
 def query(index: dict, kind: str | None = None, contains: str | None = None, bundle: str | None = None,

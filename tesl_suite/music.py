@@ -11,6 +11,7 @@ Layout: mods/<id>/music/music.json + the audio files.
 """
 from __future__ import annotations
 from .fsutil import atomic_write, trash
+from .settings import find_tool as _tool
 
 import json
 import shutil
@@ -63,7 +64,7 @@ def _write(mod_id: str, manifest: dict) -> None:
 def _to_ogg(src: Path, dest: Path) -> tuple[float, Path]:
     """OGG Vorbis for the game (OGG is kept as it is; WAV is kept only without ffmpeg). Returns the duration in seconds and the stored file."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = _tool("ffmpeg")
     if src.suffix.lower() == ".ogg" or (src.suffix.lower() == ".wav" and not ffmpeg):
         dest = dest.with_suffix(src.suffix.lower())
         shutil.copyfile(src, dest)
@@ -73,7 +74,7 @@ def _to_ogg(src: Path, dest: Path) -> tuple[float, Path]:
         subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(src), "-vn", "-c:a", "libvorbis", "-q:a", "6", str(dest)], check=True)
     seconds = 0.0
     if ffmpeg:
-        probe = shutil.which("ffprobe")
+        probe = _tool("ffprobe")
         if probe:
             r = subprocess.run([probe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(dest)], capture_output=True, text=True)
             try:

@@ -66,12 +66,12 @@ More in [docs/screenshots](docs/screenshots).
 ## Installation
 
 **Installer (recommended)**
-1. Run **TESL-Forge-Setup-1.0.0.exe**. It installs for your Windows user only, with no administrator prompt.
+1. Run **TESL-Forge-Setup-1.0.1.exe**. It installs for your Windows user only, with no administrator prompt.
 2. Open **TESL Forge** from the Start menu. It finds the game, or asks you to pick the game folder once.
 3. Your mods live in `Documents\TESL Forge` and survive updates and uninstalling.
 
 **Zip version (with the `tesl` command line)**
-1. Unzip **TESL-Forge-1.0.0.zip** anywhere outside the game folder.
+1. Unzip **TESL-Forge-1.0.1.zip** anywhere outside the game folder.
 2. Double-click **Set up TESL Forge.cmd** once (it prepares TESL Forge's own Python environment), then
    **Open TESL Forge.cmd**.
 
