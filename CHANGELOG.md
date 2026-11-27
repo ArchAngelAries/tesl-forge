@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.2 — change original cards, choose how cards are available
+
+- **Change an original card in place:** on the Cards page, "Change this card…" copies any original card into your mod.
+  Edit its cost, power, health, name, text and rarity there (abilities from the command line, `tesl mod edit`), or
+  Restore the original. Every deck that holds the card plays the changed version, in offline play only. Also
+  `tesl card change` and `tesl card restore`. Needs TESL: Everlasting 1.0.5 or newer.
+- **How players get your cards:** in the mod's settings, choose a full playset right away, or earned like official cards
+  (packs, rewards, crafting, the store).
+- **Arena drafts:** mod cards join Solo and Versus Arena drafts like official cards. Turn that off for the whole mod in
+  its settings, or for one card in its Edit dialog.
+
 ## 1.0.1 — fixes
 
 - **Decks with comma names:** card names that contain a comma ("Miraak, Dragonborn", "Let Me Guess, Someone Stole Your

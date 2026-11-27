@@ -5,6 +5,7 @@ Layout of a mod folder (mods/<mod-id>/):
   cards/<slug>.json    one card in the original FullSerializer card JSON form (the shape of data/original-rules)
   art/<slug>.png       card art, square, imported at 1024 x 1024 (the original art size)
   decks/<slug>.json    {"name", "description", "art_card", "cards": [{"id", "name", "count"}]}
+  changes/<slug>.json  an original card changed in place: a full copy keeping its id (tesl_suite.changes; offline only)
 The offline engine loads enabled mods from deploy/active-mods.json at startup (OfflineMods.cs); no game file changes.
 """
 from __future__ import annotations
@@ -471,6 +472,9 @@ def validate(game: GameInstall, mod_id: str) -> dict:
             both = mine & {x["asset"].lower() for x in replace.list_replacements(other)["images"]}
             if both:
                 warnings.append(f"also replaced by enabled mod {other} (the mod later in the list wins): {sorted(both)[:5]}")
+    from .changes import list_changes, validate_changes
+    cerr, cwarn = validate_changes(game, mod_id, types)
+    errors += cerr; warnings += cwarn
     story_slugs = [s["slug"] for s in stories.list_stories(mod_id)["stories"]]
     issues = [{"severity": sev, "text": t, **locate(t, set(ids.values()), story_slugs)} for sev, msgs in (("error", errors), ("warning", warnings)) for t in msgs]
     names = {c.get("ResourceId", {}).get("UniqueName"): c.get("Name") for c in mod_cards(mod_id)}
@@ -479,8 +483,8 @@ def validate(game: GameInstall, mod_id: str) -> dict:
             x["item"] = names.get(x["item"]) or x["item"]
     return {"mod": meta["id"], "cards": len(ids), "decks": len(list((mod_dir(mod_id) / "decks").glob("*.json"))),
             "replacements": len(mine), "avatars": len(avatars.list_avatars(mod_id)["avatars"]),
-            "cardbacks": len(cardbacks.list_cardbacks(mod_id)["cardbacks"]), "valid": not errors, "errors": errors, "warnings": warnings,
-            "issues": issues}
+            "cardbacks": len(cardbacks.list_cardbacks(mod_id)["cardbacks"]), "changes": len(list_changes(game, mod_id)["changes"]),
+            "valid": not errors, "errors": errors, "warnings": warnings, "issues": issues}
 
 
 _LOCATE = [   # message start -> (app page, item group)

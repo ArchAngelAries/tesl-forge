@@ -459,9 +459,36 @@ VIEWS.cards = async main => {
     h("button", { style: "margin:0 10px 10px", onclick: e => { e.stopPropagation(); editDialog("card", c.slug, "Edit " + c.name, [
       ["name", "Name", "text", c.name], ["cost", "Cost", "number", c.cost], ["attack", "Power", "number", c.attack], ["health", "Health", "number", c.health],
       ["rarity", "Rarity", "select", c.rarity, [["Common", "Common"], ["Rare", "Rare"], ["Epic", "Epic"], ["Legendary", "Legendary"]]],
-      ["text", "Card text", "textarea", (c.text || "")], ["art", "New art", "file", null, "image/*"]]); } }, "Edit")));
+      ["text", "Card text", "textarea", (c.text || "")], ["arena", "In Solo and Versus Arena drafts", "checkbox", c.arena !== false],
+      ["art", "New art", "file", null, "image/*"]]); } }, "Edit")));
   if (!d.cards.length) grid.append(h("p", { class: "sub" }, "No cards yet."));
-  main.append(grid, h("h2", {}, "New card"));
+  main.append(grid);
+
+  // Original cards this mod changes in place (offline gameplay): a copy of the card keeping its id; decks that hold it play
+  // the changed version. Art stays the original's (replace it on the Remaster page).
+  const changes = d.changes || [];
+  const chGrid = h("div", { class: "grid" });
+  const diff = c => (c.changed || []).length ? "Changed: " + c.changed.join(", ") : "Not changed yet";
+  for (const c of changes) chGrid.append(h("div", { class: "tile", title: (c.text || "").replace(/<[^>]+>/g, "") },
+    h("img", { src: c.thumb, alt: c.name }), h("div", { class: "cost" }, c.cost ?? ""),
+    h("div", { class: "cap" }, h("b", {}, c.name), h("small", {}, (c.original_name && c.original_name !== c.name ? `was ${c.original_name} · ` : "") + diff(c))),
+    h("div", { style: "display:flex;gap:6px;margin:0 10px 10px" },
+      h("button", { onclick: e => { e.stopPropagation(); editDialog("card", c.slug, "Change " + (c.original_name || c.name), [
+        ["name", "Name", "text", c.name], ["cost", "Cost", "number", c.cost], ["attack", "Power", "number", c.attack], ["health", "Health", "number", c.health],
+        ["rarity", "Rarity", "select", c.rarity, [["Common", "Common"], ["Rare", "Rare"], ["Epic", "Epic"], ["Legendary", "Legendary"]]],
+        ["text", "Card text", "textarea", (c.text || "")]]); } }, "Edit"),
+      h("button", { title: "Restore the original card (the change goes to the trash; Ctrl+Z brings it back)", onclick: async e => { e.stopPropagation();
+        await act(() => api(`/api/mods/${encodeURIComponent(state.mod)}/changes/${encodeURIComponent(c.slug)}`, { method: "DELETE" }), "Original card restored"); refresh(); } }, "Restore"))));
+  if (!changes.length) chGrid.append(h("p", { class: "sub" }, "This mod changes no original cards."));
+  main.append(h("h2", {}, "Original cards this mod changes"),
+    h("p", { class: "sub" }, "Change an original card in place: its stats, name, text and rarity (and abilities, from the command line). Every deck that holds the card plays the changed version. Offline play only."),
+    chGrid,
+    h("div", { class: "panel", style: "margin-bottom:18px" }, h("b", {}, "Change this card…"), cardPicker(async c => {
+      const r = await act(() => api(`/api/mods/${encodeURIComponent(state.mod)}/changes`, { method: "POST", body: { card: String(c.id) } }),
+        "Now changing " + c.name);
+      if (r && r.existing) toast(c.name + " was already changed by this mod.");
+      refresh(); }, { placeholder: "Search an original card to change…" })),
+    h("h2", {}, "New card"));
 
   const f = { name: h("input", { placeholder: "Card name" }), cost: h("input", { type: "number", min: 0 }), attack: h("input", { type: "number", min: 0 }),
     health: h("input", { type: "number", min: 0 }), rarity: h("select", {}, ["", "Common", "Rare", "Epic", "Legendary"].map(r => h("option", { value: r }, r || "(template's)"))),
@@ -880,12 +907,18 @@ function detailsPanel() {
     d.dependencies.forEach(addDep);
     const ids = v => h("input", { value: v.join(" "), placeholder: "mod ids, space separated", list: "forge-mod-ids" });
     const conflicts = ids(d.conflicts), after = ids(d.load_after), before = ids(d.load_before);
+    const collection = h("select", {}, [["owned", "A full playset right away"], ["earn", "Earned like official cards (packs, rewards, crafting, the store)"]].map(([v, t]) => h("option", { value: v }, t)));
+    collection.value = d.collection || "owned";
+    const arena = h("input", { type: "checkbox" }); arena.checked = d.arena !== false;
     const notes = h("textarea", { rows: 3, placeholder: "What changed in this release" });
     const part = h("select", {}, [["patch", "Fix (x.y.Z)"], ["minor", "Additions (x.Y.0)"], ["major", "Big change (X.0.0)"]].map(([v, t]) => h("option", { value: v }, t))); part.value = "minor";
     let previewPath = null;
     box.append(h("datalist", { id: "forge-mod-ids" }, others.map(m => h("option", { value: m.id }, m.name))),
       h("div", { class: "editor-2col" },
-        h("div", {}, h("div", { class: "row" }, field("Name", name), field("Version", version)), field("Author", author), field("Description", desc), field("Website", website)),
+        h("div", {}, h("div", { class: "row" }, field("Name", name), field("Version", version)), field("Author", author), field("Description", desc), field("Website", website),
+          field("How players get this mod's cards and decks", collection),
+          h("label", { class: "switch" }, arena, h("span", { class: "knob" }), h("span", {}, "Cards appear in Solo and Versus Arena drafts")),
+          h("small", { class: "sub" }, "One card can also stay out of arena drafts alone: Edit it on the Cards page.")),
         h("div", {}, h("div", { class: "field" }, h("label", {}, "Needs these mods (and versions)"), depRows, h("button", { onclick: () => addDep() }, "Add a needed mod")),
           field("Does not work with", conflicts), h("div", { class: "row" }, field("Load after", after), field("Load before", before)),
           field("Preview picture (shown with exported packages)", dropZone(d.preview_url ? "Replace the preview picture" : "Drop a preview picture", "image/*", p => { previewPath = p; })),
@@ -893,7 +926,8 @@ function detailsPanel() {
       h("div", { class: "toolbar" }, h("span", { class: "grow" }), h("button", { class: "primary", onclick: async () => {
         const split = el => el.value.split(/[\s,]+/).filter(Boolean);
         await act(() => api(`/api/mods/${encodeURIComponent(state.mod)}/details`, { method: "POST", body: { name: name.value, author: author.value, description: desc.value,
-          website: website.value, version: version.value, dependencies: [...depRows.children].map(r => r._get()).filter(x => x.id),
+          website: website.value, version: version.value, collection: collection.value, arena: arena.checked,
+          dependencies: [...depRows.children].map(r => r._get()).filter(x => x.id),
           conflicts: split(conflicts), load_after: split(after), load_before: split(before) } }), "Details saved");
         if (previewPath) await act(() => api(`/api/mods/${encodeURIComponent(state.mod)}/details/preview`, { method: "POST", body: { image: previewPath } }), "Preview saved");
         await loadMods(); draw(); } }, "Save details")),

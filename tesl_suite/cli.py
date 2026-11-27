@@ -234,6 +234,13 @@ def _mod_commands(sub):
     fr.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.framing", fromlist=["x"]).set_frame(a.mod, a.card, a.scale, a.x, a.y) if a.scale is not None
                                else __import__("tesl_suite.framing", fromlist=["x"]).current(a.mod, a.card),
         lambda p: print(json.dumps(p))))
+    ch = c.add_parser("change", help="change an original card in place (offline gameplay mod): copies it into the mod; then edit it with 'tesl mod edit <mod> card <card> --set cost=...'")
+    ch.add_argument("--mod", required=True); ch.add_argument("--card", required=True, help="original card name or id")
+    ch.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.changes", fromlist=["x"]).change_card(find_install(a.game), a.mod, a.card),
+        lambda p: print(("Already changing " if p["existing"] else "Changing ") + f"{p['change']['name']} [{p['change']['id']}] in {p['mod']} (changes/{p['change']['slug']}.json)")))
+    ur = c.add_parser("restore", help="restore an original card this mod changes"); ur.add_argument("--mod", required=True); ur.add_argument("--card", required=True)
+    ur.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.changes", fromlist=["x"]).remove_change(a.mod, a.card),
+        lambda p: print(f"Restored the original card ({p['removed']}); the change file is in the suite's trash")))
     ab = c.add_parser("abilities", help="a card's abilities and editable parameters (for --abilities)"); ab.add_argument("card")
     ab.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.api", fromlist=["card_abilities"]).card_abilities(a.card),
         lambda p: [print(f"{x['id']:12} {x['label']}: " + ", ".join(f"{q['label']}={q['value']} [{'.'.join(map(str, q['path']))}]" for q in x["params"])) for x in p["abilities"]]))

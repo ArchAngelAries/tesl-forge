@@ -22,11 +22,11 @@ from pathlib import Path
 
 from .mods import DEPLOY, _active, all_mod_ids, mod_dir, mod_cards, read_mod
 
-ENGINE_LEVEL = 56          # OfflineCompat.ApiLevel of the engine this suite was made with
+ENGINE_LEVEL = 57          # OfflineCompat.ApiLevel of the engine this suite was made with
 # The engine checkpoint that added each kind of mod content (a mod needs the highest one it uses).
 FEATURE_LEVELS = {"cards": 29, "decks": 29, "image replacements": 31, "avatars": 32, "emotes": 33, "card backs": 35,
                   "boards": 41, "board edits": 45, "music": 42, "sounds": 43, "card voices": 43, "game modes": 46,
-                  "stories": 48, "master difficulty": 49, "AI opponents": 53, "card packs": 54}
+                  "stories": 48, "master difficulty": 49, "AI opponents": 53, "card packs": 54, "changed cards": 57}   # "arena opt-out": no level (older engines just ignore it)
 LOCAL = {"image replacements", "music", "sounds", "boards", "board edits"}
 COSMETIC = {"avatars", "card backs", "emotes", "card voices"}
 
@@ -57,6 +57,10 @@ def features(mod_id: str) -> list[str]:
             out.append("card voices")
     if (root / "decks").is_dir() and any((root / "decks").glob("*.json")):
         out.append("decks")
+    if (_json(root / "mod.json") or {}).get("arena") is False:
+        out.append("arena opt-out")              # older engines ignore it (the cards stay in the drafts)
+    if (root / "changes").is_dir() and any((root / "changes").glob("*.json")):
+        out.append("changed cards")              # gameplay: offline only (not LOCAL or COSMETIC)
     if ((_json(root / "replace" / "replace.json") or {}).get("images")):
         out.append("image replacements")
     if ((_json(root / "avatars" / "avatars.json") or {}).get("avatars")):

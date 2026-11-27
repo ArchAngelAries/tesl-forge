@@ -26,12 +26,16 @@ def _card_file(mod_id: str, card: str) -> Path:
         c = json.loads(p.read_text(encoding="utf-8"))
         if str(c["ResourceId"]["Id"]) == str(card) or (c.get("Name") or "").lower() == str(card).lower():
             return p
+    from .changes import change_file          # an original card this mod changes in place (tesl_suite.changes)
+    changed = change_file(mod_id, card)
+    if changed is not None:
+        return changed
     raise ValueError(f"{mod_id} has no card '{card}'")
 
 
 def edit_card(game, mod_id: str, card: str, name: str | None = None, cost=None, attack=None, health=None, text: str | None = None,
               rarity: str | None = None, unique: bool | None = None, art: str | None = None, rules_from: str | None = None,
-              abilities: list | None = None, keywords: dict | None = None) -> dict:
+              abilities: list | None = None, keywords: dict | None = None, arena: bool | None = None) -> dict:
     read_mod(mod_id)
     path = _card_file(mod_id, card)
     c = json.loads(path.read_text(encoding="utf-8"))
@@ -46,6 +50,8 @@ def edit_card(game, mod_id: str, card: str, name: str | None = None, cost=None, 
     if unique is not None:
         c["Unique"] = bool(unique)
         c["MaxCopies"] = 1 if unique else 3
+    if arena is not None:                     # False: this card stays out of Solo and Versus Arena drafts
+        c["InvalidArenaPick"] = not (arena is True or str(arena).lower() in ("1", "true", "yes", "on"))
     notes = []
     if rules_from or abilities is not None or keywords:
         originals = _original_cards(game)

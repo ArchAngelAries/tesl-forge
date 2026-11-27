@@ -484,3 +484,63 @@ class SmallFrames(unittest.TestCase):
         self.assertEqual(f["HangerImageOffsetY"], 0.0)   # scale 1 leaves no room to move
         self.assertGreaterEqual(small_frames(0.0)["ListImageOffsetY"], -0.41)
 
+
+
+class ChangedCards(unittest.TestCase):
+    """An original card changed in place (tesl_suite.changes): a full copy that keeps the card's id, edited like a mod card."""
+    @needs_game
+    def test_change_edit_validate_and_restore(self):
+        from tesl_suite import changes, edits
+        with TempMod(copy=False) as mid:
+            r = changes.change_card(GAME, mid, "Cloudrest Illusionist")
+            cid = r["change"]["id"]
+            self.assertFalse(r["existing"])
+            self.assertIn(cid, mods._original_cards(GAME))
+            self.assertTrue(changes.change_card(GAME, mid, str(cid))["existing"])   # the same card again: the existing change
+            edits.edit_card(GAME, mid, "Cloudrest Illusionist", cost=2, health=5, name="Cloudrest Archillusionist")
+            listed = changes.list_changes(GAME, mid)["changes"]
+            self.assertEqual(len(listed), 1)
+            self.assertEqual((listed[0]["cost"], listed[0]["health"], listed[0]["name"]), (2, 5, "Cloudrest Archillusionist"))
+            self.assertEqual(sorted(listed[0]["changed"]), ["cost", "health", "name"])
+            v = mods.validate(GAME, mid)
+            self.assertTrue(v["valid"], v["errors"])
+            self.assertEqual(v["changes"], 1)
+            self.assertIn("changed cards", compat.features(mid))
+            self.assertGreaterEqual(compat.FEATURE_LEVELS["changed cards"], 57)
+            changes.remove_change(mid, "Cloudrest Archillusionist")
+            self.assertEqual(changes.list_changes(GAME, mid)["changes"], [])
+
+    @needs_game
+    def test_mod_cards_cannot_be_changed(self):
+        from tesl_suite import changes
+        with TempMod(copy=False) as mid:
+            mods.new_card(GAME, mid, "Test Changeling", "Fiery Imp")
+            with self.assertRaises(ValueError):
+                changes.change_card(GAME, mid, "Test Changeling")
+
+
+class CardAvailability(unittest.TestCase):
+    """How players get a mod's cards (owned / earned) and whether they appear in arena drafts (mod-wide or per card)."""
+    @needs_sample
+    @needs_game
+    def test_collection_and_arena_settings(self):
+        from tesl_suite import details, edits
+        with TempMod() as mid:
+            d = details.get(mid)
+            self.assertIn(d["collection"], ("owned", "earn"))
+            self.assertTrue(d["arena"])
+            d = details.update(mid, {"collection": "earn", "arena": False})
+            self.assertEqual((d["collection"], d["arena"]), ("earn", False))
+            meta = mods.read_mod(mid)
+            self.assertEqual((meta["collection"], meta["arena"]), ("earn", False))
+            self.assertIn("arena opt-out", compat.features(mid))
+            self.assertEqual(compat.FEATURE_LEVELS.get("arena opt-out", 0), 0)   # older engines still load the mod
+            details.update(mid, {"arena": True})
+            self.assertNotIn("arena", mods.read_mod(mid))
+            with self.assertRaises(ValueError):
+                details.update(mid, {"collection": "rent"})
+            card = next(c for c in mods.mod_cards(mid) if c["Name"] == "Whiterun Wolfcaller")
+            edits.edit_card(GAME, mid, card["ResourceId"]["UniqueName"], arena=False)
+            self.assertTrue(next(c for c in mods.mod_cards(mid) if c["Name"] == "Whiterun Wolfcaller")["InvalidArenaPick"])
+            edits.edit_card(GAME, mid, card["ResourceId"]["UniqueName"], arena=True)
+            self.assertFalse(next(c for c in mods.mod_cards(mid) if c["Name"] == "Whiterun Wolfcaller")["InvalidArenaPick"])

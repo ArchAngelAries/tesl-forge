@@ -31,7 +31,10 @@ def get(mod_id: str) -> dict:
             "version": m.get("version") or "1.0.0", "dependencies": [d if isinstance(d, dict) else {"id": d, "version": "*"} for d in m.get("dependencies") or []],
             "conflicts": m.get("conflicts") or [], "load_after": m.get("load_after") or [], "load_before": m.get("load_before") or [],
             "changelog": m.get("changelog") or [], "preview": p, "preview_url": f"/mod-file/{mod_id}/{p}" if p else None,
-            "website": m.get("website", "")}
+            "website": m.get("website", ""),
+            # how players get the cards: "owned" (a full playset right away) or "earn" (packs, rewards, crafting, store)
+            "collection": "earn" if str(m.get("collection", "")).lower() == "earn" else "owned",
+            "arena": m.get("arena", True) is not False}
 
 
 def _ids(values, field: str, mod_id: str) -> list[str]:
@@ -50,13 +53,24 @@ def _ids(values, field: str, mod_id: str) -> list[str]:
 
 
 def update(mod_id: str, fields: dict) -> dict:
-    """Change any of: name, author, description, website, version, dependencies, conflicts, load_after, load_before."""
+    """Change any of: name, author, description, website, version, dependencies, conflicts, load_after, load_before,
+    collection ("owned" or "earn"), arena (True: the mod's cards join arena drafts)."""
     meta = read_mod(mod_id)
     for k in ("name", "author", "description", "website"):
         if k in fields and fields[k] is not None:
             meta[k] = str(fields[k]).strip()
     if not meta.get("name"):
         raise ValueError("a mod needs a name")
+    if fields.get("collection") is not None:
+        c = str(fields["collection"]).strip().lower()
+        if c not in ("owned", "earn"):
+            raise ValueError("collection must be 'owned' (a full playset right away) or 'earn' (like official cards)")
+        meta["collection"] = c
+    if fields.get("arena") is not None:
+        if fields["arena"] is True or str(fields["arena"]).lower() in ("1", "true", "yes", "on"):
+            meta.pop("arena", None)
+        else:
+            meta["arena"] = False
     if fields.get("version") is not None:
         v = str(fields["version"]).strip()
         if not VERSION_RE.match(v):

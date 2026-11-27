@@ -13,6 +13,8 @@ POST /api/mods/<id>/export                      a shareable .zip (returns its pa
 POST /api/mods/<id>/uninstall                   moved to workspace/trash
 POST /api/compat/order                          {"order": [ids]} or {"auto": true}
 POST /api/mods/<id>/cards                       {name, template, cost?, attack?, health?, text?, rarity?, art?, rules_from?, no_rules?, unique?}
+POST /api/mods/<id>/changes                     {card} change an original card in place (copies it into the mod; edit it like a card)
+DELETE /api/mods/<id>/changes/<slug>            restore the original card
 POST /api/mods/<id>/decks                       {name, cards: "Name x3; Other x2" (";", new lines or commas) or ["Name x3", {name|id, count}], art_card?, description?}
 POST /api/mods/<id>/avatars                     {name, image, voice?, head?}
 POST /api/mods/<id>/avatars/<slug>/emotes       {emote, text?, audio?}
@@ -92,6 +94,7 @@ def mod_detail(mod_id: str) -> dict:
         s = cards.summarize(c, "Mod_" + mod_id)
         slug = c.get("ResourceId", {}).get("UniqueName", "")
         s["slug"] = slug
+        s["arena"] = not c.get("InvalidArenaPick")
         s["art"] = f"/mod-file/{mod_id}/art/{slug}.png" if (root / "art" / f"{slug}.png").is_file() else None
         pv = previews_dir / f"{slug}.png"
         s["preview"] = f"/api/mods/{mod_id}/previews/{slug}.png?t={int(pv.stat().st_mtime)}" if pv.is_file() else None
@@ -150,7 +153,11 @@ def mod_detail(mod_id: str) -> dict:
         if c["key"].startswith(mod_id + "/"):
             c["label"] = next((o["name"] for o in op if f"{mod_id}/{o['slug']}" == c["key"]), c["key"]) + " (this mod)"
     enabled = next((m["enabled"] for m in listing if m["id"] == mod_id), False)
-    return {"mod": meta, "enabled": enabled, "cards": mod_cards, "decks": decks, "avatars": av["avatars"], "avatar_page": av.get("page", {}),
+    from . import changes as _changes
+    ch = _changes.list_changes(_game(), mod_id)["changes"]
+    for x in ch:
+        x["thumb"] = f"/api/cards/{x['id']}/art?size=thumb"
+    return {"mod": meta, "enabled": enabled, "cards": mod_cards, "changes": ch, "decks": decks, "avatars": av["avatars"], "avatar_page": av.get("page", {}),
             "opponents": op, "opponent_choices": choices, "packs": pk, "cardbacks": cb, "boards": bd, "board_bases": list(boards.BASES), "music": mu, "music_contexts": music.contexts(mod_id), "sounds": sd, "card_voices": cv, "voice_slots": sounds.ALL_SLOTS, "extra_emotes": ex, "emote_types": list(avatars.EMOTE_TYPES), "modes": md, "stories": st, "replacements": rp, "validation": mods.validate(_game(), mod_id)}
 
 
@@ -421,6 +428,12 @@ class Handler(BaseHTTPRequestHandler):
                                                     _int(b.get("health")), b.get("text") or None, b.get("rarity") or None, b.get("art") or None,
                                                     b.get("rules_from") or None, bool(b.get("no_rules")), b.get("unique"),
                                                     b.get("abilities"), b.get("keywords") or None))
+                if what == "changes" and method == "POST" and len(p) == 3:
+                    from . import changes as _changes
+                    return self._json(_changes.change_card(g(), mod_id, str(self._payload()["card"])))
+                if what == "changes" and method == "DELETE" and len(p) == 4:
+                    from . import changes as _changes
+                    return self._json(_changes.remove_change(mod_id, p[3]))
                 if what == "decks" and method == "POST":
                     b = self._payload()
                     return self._json(mods.new_deck(g(), mod_id, b["name"], _deck_spec(b.get("cards")), b.get("art_card") or None, b.get("description", "")))
