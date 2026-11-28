@@ -178,6 +178,11 @@ def _mod_commands(sub):
         + ("" if not p["compatibility"] else "; would be skipped: " + "; ".join(p["compatibility"])) + (" - enabled" if p.get("enabled") else ""))))
     un = m.add_parser("uninstall", help="remove a mod (moved to workspace/trash, recoverable)"); un.add_argument("mod_id")
     un.set_defaults(fn=_simple(lambda a: packages.uninstall(a.mod_id), lambda p: print(f"{p['mod']} moved to {p['moved_to']}")))
+    ul = m.add_parser("uninstalled", help="mods you uninstalled (still in workspace/trash)")
+    ul.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.removal", fromlist=["uninstalled"]).uninstalled(),
+        lambda p: [print(f"{x['folder']:40} {x['name']}") for x in p["mods"]] or print("none")))
+    rs = m.add_parser("restore", help="bring back an uninstalled mod (a folder name from 'mod uninstalled')"); rs.add_argument("folder")
+    rs.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.removal", fromlist=["restore_mod"]).restore_mod(a.folder), lambda p: print(f"restored {p['mod']}")))
     from . import fsutil
     for name, fn in (("undo", fsutil.undo), ("redo", fsutil.redo)):
         u = m.add_parser(name, help=f"{name} the last change to a mod (files saved by the suite; deletes come back from the trash)")
@@ -244,12 +249,18 @@ def _mod_commands(sub):
     ab = c.add_parser("abilities", help="a card's abilities and editable parameters (for --abilities)"); ab.add_argument("card")
     ab.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.api", fromlist=["card_abilities"]).card_abilities(a.card),
         lambda p: [print(f"{x['id']:12} {x['label']}: " + ", ".join(f"{q['label']}={q['value']} [{'.'.join(map(str, q['path']))}]" for q in x["params"])) for x in p["abilities"]]))
+    cr = c.add_parser("remove", help="delete a new card (its art and voice clips too; undo brings it back)")
+    cr.add_argument("--mod", required=True); cr.add_argument("--card", required=True, help="slug, name or id")
+    cr.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.removal", fromlist=["remove_card"]).remove_card(a.mod, a.card),
+        lambda p: print(f"{p['mod']}: removed {p['name']}" + (f" (still used by {', '.join(p['still_used_by'])})" if p["still_used_by"] else ""))))
     d = sub.add_parser("deck", help="author decks").add_subparsers(dest="cmd", required=True)
     dn = d.add_parser("new", help="new deck: --cards 'Name x3; Other Card x2' (separate with ; or new lines, or give a JSON array; commas work for names without commas)")
     dn.add_argument("--mod", required=True); dn.add_argument("--name", required=True); dn.add_argument("--cards", required=True)
     dn.add_argument("--art-card"); dn.add_argument("--description", default="")
     dn.set_defaults(fn=_simple(lambda a: mods.new_deck(find_install(a.game), a.mod, a.name, a.cards, a.art_card, a.description),
         lambda p: print(f"Deck {p['deck']['name']}: {p['deck']['total_cards']} cards -> {p['deck']['file']}")))
+    dr = d.add_parser("remove", help="delete a deck (undo brings it back)"); dr.add_argument("--mod", required=True); dr.add_argument("--deck", required=True)
+    dr.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.removal", fromlist=["remove_deck"]).remove_deck(a.mod, a.deck), lambda p: print(f"{p['mod']}: removed {p['name']}")))
 
 
 def _replace_commands(sub):
@@ -297,6 +308,10 @@ def _avatar_commands(sub):
         lambda p: [print(f"{x['slug']:24} {x['name']}  voice={x.get('voice', 'default')}") for x in p["avatars"]]))
     rm = v.add_parser("remove", help="remove an avatar"); rm.add_argument("--mod", required=True); rm.add_argument("--name", required=True)
     rm.set_defaults(fn=_simple(lambda a: avatars.remove(a.mod, a.name), lambda p: print(f"{p['mod']}: removed {p['removed']}")))
+    ce = v.add_parser("clear-emote", help="remove an avatar's own line for one emote (its borrowed voice plays again)")
+    ce.add_argument("--mod", required=True); ce.add_argument("--name", required=True); ce.add_argument("--emote", required=True)
+    ce.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.removal", fromlist=["clear_emote"]).clear_emote(a.mod, a.name, a.emote),
+        lambda p: print(f"{p['mod']}: {p['avatar']} {p['cleared']} cleared")))
 
 
 def _cardback_commands(sub):
@@ -347,6 +362,8 @@ def _translate_commands(sub):
     t = sub.add_parser("translate", help="translations of a mod's text (shown when the game runs in that language)").add_subparsers(dest="cmd", required=True)
     ls = t.add_parser("list", help="languages and how much is translated"); ls.add_argument("--mod", required=True)
     ls.set_defaults(fn=_simple(lambda a: tr.languages(a.mod), lambda p: [print(f"{x['language']:6} {x['label']:20} {x['done']}/{x['total']}") for x in p["languages"]] or print(f"no translations yet ({p['total']} texts)")))
+    tx = t.add_parser("remove", help="delete one language's translations"); tx.add_argument("--mod", required=True); tx.add_argument("--lang", required=True)
+    tx.set_defaults(fn=_simple(lambda a: __import__("tesl_suite.removal", fromlist=["remove_language"]).remove_language(a.mod, a.lang), lambda p: print(f"{p['mod']}: removed {p['removed']}")))
     ex = t.add_parser("export", help="write a CSV (English, translation) for translators"); ex.add_argument("--mod", required=True); ex.add_argument("--lang", required=True); ex.add_argument("--out", required=True)
     def _ex(a):
         Path(a.out).write_text(tr.export_csv(a.mod, a.lang), encoding="utf-8-sig")

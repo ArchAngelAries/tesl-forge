@@ -229,6 +229,22 @@ const field = (label, input, hint) => {
 };
 
 // ---- reusable pieces -------------------------------------------------------------------------------------------------
+// Delete something the user made: confirm (naming anything that still uses it), DELETE, refresh. The files go to the suite's
+// trash, so the mod's Undo (Ctrl+Z) brings them back.
+async function deleteItem(name, url, usageUrl) {
+  let note = "";
+  if (usageUrl) {
+    try { const u = await api(usageUrl); if (u.used_by && u.used_by.length) note = `
+
+Still used by: ${u.used_by.join(", ")}. The mod's check will list what needs fixing.`; }
+    catch (e) { /* usage is advice only */ }
+  }
+  if (!confirm(`Delete ${name}?${note}
+
+Undo (Ctrl+Z) brings it back.`)) return false;
+  try { await act(() => api(url, { method: "DELETE" }), name.charAt(0).toUpperCase() + name.slice(1) + " deleted"); } catch (e) { return false; }
+  refresh(); return true;
+}
 function dropZone(text, accept, onFile) {
   const input = h("input", { type: "file", accept, class: "hidden" });
   const zone = h("div", { class: "drop" }, h("div", {}, text));
@@ -340,7 +356,19 @@ VIEWS.overview = async main => {
     h("h2", {}, "How it works"),
     h("p", { class: "sub" }, "Everything you make lives in this mod's folder. Turn the mod on above, then start the offline game: new cards and decks are in your collection, avatars in the avatar picker, card backs in Collection > card backs (or the store), remastered art everywhere it appears.")));
   main.append(h("h2", {}, "History"), historyPanel(state.mod));
+  main.append(h("h2", {}, "Remove this mod"), h("div", { class: "panel" },
+    h("p", { class: "sub", style: "margin-top:0" }, "Uninstalling turns the mod off and moves its folder to the suite's trash. You can bring it back from Load order > Uninstalled mods."),
+    h("button", { class: "danger", onclick: () => uninstallMod(d.mod.id, d.mod.name) }, "Uninstall " + (d.mod.name || d.mod.id))));
 };
+
+// Uninstall a mod (enabled or not): it is turned off and its folder moves to the suite's trash; Load order can restore it.
+async function uninstallMod(id, name) {
+  if (!confirm(`Uninstall ${name || id}?
+
+It is turned off and moved to the suite's trash. Load order > Uninstalled mods brings it back.`)) return;
+  try { await act(() => api(`/api/mods/${encodeURIComponent(id)}/uninstall`, { method: "POST", body: {} }), "Uninstalled " + (name || id)); } catch (e) { return; }
+  if (state.mod === id) go(null, "loadorder"); else refresh();
+}
 
 // Recent changes of a mod with Undo / Redo (also Ctrl+Z / Ctrl+Y anywhere outside a text field).
 function historyPanel(mod) {
@@ -371,6 +399,7 @@ const TOUR = [
   ["Add anything", "The pages under your mod add or replace content: cards, decks, avatars, card backs, boards, music, sounds, game modes, stories, AI opponents, card packs, translations and remastered art. Bulk import brings in many at once."],
   ["Check and play", "Overview shows problems, each linked to the item it is about. Play test enables the mod, starts the game and shows what the game loaded. Every change can be undone with Ctrl+Z."],
   ["Share", "Set the version and what your mod needs on Overview > Details, record releases, and export a .zip from Load order. Others install it there too. Multiplayer only allows art, sound and other local changes unless everyone has the same mods."],
+  ["Delete and undo", "Everything you make has a Delete, Remove or Clear button where you edit it, and Undo (Ctrl+Z) brings it back. To remove a whole mod, use Uninstall on its Overview page or on Load order; Load order > Uninstalled mods can restore it."],
 ];
 function helpDialog() {
   modal(h("div", {}, h("h1", {}, "Help & shortcuts"),
@@ -460,7 +489,9 @@ VIEWS.cards = async main => {
       ["name", "Name", "text", c.name], ["cost", "Cost", "number", c.cost], ["attack", "Power", "number", c.attack], ["health", "Health", "number", c.health],
       ["rarity", "Rarity", "select", c.rarity, [["Common", "Common"], ["Rare", "Rare"], ["Epic", "Epic"], ["Legendary", "Legendary"]]],
       ["text", "Card text", "textarea", (c.text || "")], ["arena", "In Solo and Versus Arena drafts", "checkbox", c.arena !== false],
-      ["art", "New art", "file", null, "image/*"]]); } }, "Edit")));
+      ["art", "New art", "file", null, "image/*"]]); } }, "Edit"),
+    h("button", { class: "danger", style: "margin:0 10px 10px", title: "Delete this card (Undo brings it back)", onclick: e => { e.stopPropagation();
+      const u = `/api/mods/${encodeURIComponent(state.mod)}/cards/${encodeURIComponent(c.slug)}`; deleteItem(c.name, u, u + "/usage"); } }, "Delete")));
   if (!d.cards.length) grid.append(h("p", { class: "sub" }, "No cards yet."));
   main.append(grid);
 
@@ -609,7 +640,9 @@ VIEWS.decks = async main => {
     h("div", { class: "cap" }, h("b", {}, k.name), h("small", {}, `${k.total} cards`)),
     h("button", { style: "margin:0 10px 10px", onclick: () => editDialog("deck", k.slug, "Edit " + k.name, [
       ["name", "Name", "text", k.name], ["cards_spec", "Cards (one per line: Name x3)", "textarea", (k.cards || []).map(e => `${e.name} x${e.count}`).join("\n")],
-      ["art_card", "Banner card (name)", "text", ""]]) }, "Edit")));
+      ["art_card", "Banner card (name)", "text", ""]]) }, "Edit"),
+    h("button", { class: "danger", style: "margin:0 10px 10px", title: "Delete this deck (Undo brings it back)",
+      onclick: () => deleteItem(k.name, `/api/mods/${encodeURIComponent(state.mod)}/decks/${encodeURIComponent(k.slug)}`) }, "Delete")));
   if (!d.decks.length) grid.append(h("p", { class: "sub" }, "No decks yet."));
   main.append(grid, h("h2", {}, "Build a deck"));
   const deck = new Map();
@@ -822,7 +855,13 @@ function emoteDialog(a) {
       const src = pending || (line.audio ? `/mod-file/${encodeURIComponent(state.mod)}/avatars/${encodeURIComponent(line.audio)}` : null);
       if (!src) return toast("No voice clip for this emote yet.", true);
       new Audio(src).play().catch(e => toast("Can't play: " + e.message, true)); } }, "▶");
-    return { kind, text, getAudio: () => audio, el: h("div", { class: "emote-row" }, h("b", {}, EMOTE_LABEL[kind]), text, h("div", { style: "display:flex;gap:6px;align-items:center" }, play, audioZone)) };
+    const clear = (line.text || line.audio) ? h("button", { class: "danger", title: "Remove this avatar's own line (the borrowed voice plays again)", onclick: async () => {
+      if (!confirm(`Clear ${a.name}'s own ${EMOTE_LABEL[kind]} line?
+
+Undo (Ctrl+Z) brings it back.`)) return;
+      try { await act(() => api(`/api/mods/${encodeURIComponent(state.mod)}/avatars/${encodeURIComponent(a.slug)}/emotes/${kind}`, { method: "DELETE" }), "Emote line cleared"); } catch (e) { return; }
+      closeModal(); refresh(); } }, "Clear") : null;
+    return { kind, text, getAudio: () => audio, el: h("div", { class: "emote-row" }, h("b", {}, EMOTE_LABEL[kind]), text, h("div", { style: "display:flex;gap:6px;align-items:center" }, play, audioZone, clear)) };
   });
   modal(h("div", {}, h("h1", {}, a.name), h("p", { class: "sub" }, "Own lines for each emote. Empty lines keep the borrowed voice. Voice clips: WAV, MP3 or OGG."),
     rows.map(r => r.el),
@@ -1078,7 +1117,10 @@ VIEWS.translations = async main => {
     const counter = h("span", { class: "sub" }, `${done()} of ${inputs.length} translated`);
     inputs.forEach(i => i.oninput = () => counter.textContent = `${done()} of ${inputs.length} translated`);
     let csvText = null;
+    const saved = info.languages.find(l => l.language === pick.value);
     area.append(h("div", { class: "toolbar" }, counter, h("span", { class: "grow" }),
+        saved ? h("button", { class: "danger", title: "Delete this language's translations (Undo brings them back)", onclick: async () => {
+          if (await deleteItem(`the ${saved.label} translation`, `/api/mods/${encodeURIComponent(state.mod)}/translations/${encodeURIComponent(pick.value)}`)) state.trLang = null; } }, "Delete language") : null,
         h("a", { class: "button", href: `/api/mods/${encodeURIComponent(state.mod)}/translations/${pick.value}.csv`, download: `${state.mod}-${pick.value}.csv`, style: "padding:6px 10px;border:1px solid var(--line);border-radius:8px" }, "Export CSV"),
         dropZone("Import a translated CSV", ".csv,text/csv", async (p, u, f) => {
           const text = await f.text();
@@ -2064,6 +2106,7 @@ VIEWS.loadorder = async main => {
         h("button", { disabled: i === 0, onclick: () => { const o = [...enabled]; [o[i - 1], o[i]] = [o[i], o[i - 1]]; save(o); } }, "↑"),
         h("button", { disabled: i === enabled.length - 1, onclick: () => { const o = [...enabled]; [o[i + 1], o[i]] = [o[i], o[i + 1]]; save(o); } }, "↓"),
         h("button", { onclick: () => save(enabled.filter(x => x !== id)) }, "Disable"),
+        h("button", { class: "danger", onclick: () => uninstallMod(id) }, "Uninstall"),
         h("a", { class: "button", href: `/api/mods/${encodeURIComponent(id)}/export.zip`, download: `${id}.zip`, style: "padding:6px 10px;border:1px solid var(--line);border-radius:8px" }, "Export"),
         h("button", { onclick: () => go(id, "overview") }, "Open")));
     });
@@ -2075,7 +2118,7 @@ VIEWS.loadorder = async main => {
     for (const m of off) offPanel.append(h("div", { class: "row", style: "grid-template-columns:1fr auto;align-items:center;padding:4px 0" },
       h("div", {}, h("b", {}, m.name || m.id), h("small", { class: "sub" }, "  " + m.id)),
       h("div", { style: "display:flex;gap:6px" },
-      h("button", { onclick: async () => { if (!confirm(`Uninstall ${m.id}? It is moved to the suite's trash folder.`)) return; await act(() => api(`/api/mods/${m.id}/uninstall`, { method: "POST", body: {} }), "Uninstalled"); draw(); } }, "Uninstall"),
+      h("button", { class: "danger", onclick: () => uninstallMod(m.id, m.name) }, "Uninstall"),
       h("button", { onclick: async () => {
         try { await api(`/api/mods/${m.id}/enable`, { method: "POST", body: {} }); toast("Enabled " + m.id); }
         catch (e) { if (confirm(e.message + "\n\nEnable anyway? The game will skip what cannot load.")) await act(() => api(`/api/mods/${m.id}/enable`, { method: "POST", body: { force: true } }), "Enabled"); }
@@ -2096,7 +2139,16 @@ VIEWS.loadorder = async main => {
         draw(); }),
       h("div", { class: "row", style: "grid-template-columns:1fr auto;margin-top:8px" }, link,
         h("button", { onclick: async () => { if (!link.value) return; await act(() => api("/api/mods/install", { method: "POST", body: { source: link.value } }), "Installed"); draw(); } }, "Install from link")));
-    body.append(list, issuesPanel, installBox, offPanel);
+    // Uninstalled mods wait in the suite's trash; Restore puts one back (turned off).
+    const gone = (await api("/api/uninstalled")).mods;
+    const gonePanel = h("div", { class: "panel", style: "margin-top:12px" }, h("h3", {}, "Uninstalled mods"));
+    if (!gone.length) gonePanel.append(h("p", { class: "sub" }, "None."));
+    for (const g of gone) gonePanel.append(h("div", { class: "row", style: "grid-template-columns:1fr auto;align-items:center;padding:4px 0" },
+      h("div", {}, h("b", {}, g.name), h("small", { class: "sub" }, "  " + g.folder)),
+      h("button", { disabled: g.installed_again, title: g.installed_again ? "A mod with this id is installed now" : "Put it back (turned off)", onclick: async () => {
+        try { await act(() => api(`/api/uninstalled/${encodeURIComponent(g.folder)}/restore`, { method: "POST", body: {} }), "Restored " + g.name); } catch (e) { return; }
+        loadMods(); draw(); } }, "Restore")));
+    body.append(list, issuesPanel, installBox, offPanel, gonePanel);
   };
   await draw();
 };

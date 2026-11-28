@@ -269,7 +269,8 @@ def remove_extra_emote(mod_id: str, emote: str, avatar: str | None = None) -> di
         raise ValueError(f"no extra emote '{emote}'")
     items.remove(hit)
     if hit.get("audio"):
-        (folder / hit["audio"]).unlink(missing_ok=True)
+        if (folder / hit["audio"]).is_file():
+            trash(folder / hit["audio"], mod_id)   # undoable
     save()
     return {"mod": mod_id, "removed": hit["slug"], "total": len(items)}
 

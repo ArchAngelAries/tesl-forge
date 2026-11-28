@@ -26,8 +26,14 @@ the same rules as people, and agent or LLM players are offline against the in-ga
 Anywhere outside the game folder. It records its location each time it runs, so TESL: Everlasting finds your mods.
 
 **Where are my mods stored?**
-In `mods/<mod-id>/` inside the TESL Forge folder. Exports go to `workspace/exports/`. Deleted items go to
-`workspace/trash/`.
+With the installer: in `Documents\TESL Forge\mods\<mod-id>\`. With the zip version: in `mods/<mod-id>/` inside the
+TESL Forge folder. Exports go to `workspace/exports/` and deleted items to `workspace/trash/` in that same place.
+
+**How do I delete something I made, or a whole mod?**
+Every card, deck, avatar, card back, board, track, pack, opponent, mode, story, emote, sound and translation has a
+Delete, Remove or Clear button where you edit it. Undo (Ctrl+Z, or Overview > History) brings it back. To remove a whole
+mod, use Uninstall on its Overview page or on Load order; it is turned off and moved to the trash, and Load order >
+Uninstalled mods can restore it.
 
 **How do I back up my work?**
 Copy the `mods` folder, or export each mod as a package.

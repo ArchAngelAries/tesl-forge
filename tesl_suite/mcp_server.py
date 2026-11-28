@@ -211,6 +211,23 @@ TOOLS = {
                     lambda a: __import__("tesl_suite.search", fromlist=["search"]).search(a["query"])),
     "list_opponents": (_s("AI opponents in a mod.", mod=("string", "mod id", True)),
                        lambda a: __import__("tesl_suite.opponents", fromlist=["list_opponents"]).list_opponents(a["mod"])),
+    "remove_item": (_s("Delete something a mod made (undoable: files go to the suite's trash; undo_mod_change brings them back). kind: card | deck | "
+                       "avatar | avatar_emote (item = avatar, extra {emote}) | extra_emote (extra {avatar?}) | cardback | board | track | pack | "
+                       "opponent | mode | story | sound (sound id) | card_voice (item = card, extra {line}) | replacement (asset path) | "
+                       "change (restores the original card) | language (code). For a card, card_usage first shows what still uses it.",
+                       mod=("string", "mod id", True), kind=("string", "what to delete", True), item=("string", "slug, name, id or code", True),
+                       extra=("object", "avatar_emote {emote}, extra_emote {avatar}, card_voice {line}")),
+                    lambda a: __import__("tesl_suite.removal", fromlist=["remove_item"]).remove_item(a["mod"], a["kind"], a["item"], a.get("extra"))),
+    "card_usage": (_s("Where a mod's new card is still used (decks, packs, opponents, modes, stories, other cards).",
+                      mod=("string", "mod id", True), card=("string", "slug, name or id", True)),
+                   lambda a: __import__("tesl_suite.removal", fromlist=["card_usage"]).card_usage(a["mod"], a["card"])),
+    "uninstall_mod": (_s("Uninstall a mod (disabled first, then moved to the suite's trash; list_uninstalled_mods and restore_mod bring it back).",
+                         mod=("string", "mod id", True)),
+                      lambda a: __import__("tesl_suite.packages", fromlist=["uninstall"]).uninstall(a["mod"])),
+    "list_uninstalled_mods": (_s("Mods that were uninstalled and can be restored."),
+                              lambda a: __import__("tesl_suite.removal", fromlist=["uninstalled"]).uninstalled()),
+    "restore_mod": (_s("Bring back an uninstalled mod (not enabled).", folder=("string", "folder from list_uninstalled_mods", True)),
+                    lambda a: __import__("tesl_suite.removal", fromlist=["restore_mod"]).restore_mod(a["folder"])),
     "remove_opponent": (_s("Remove an AI opponent.", mod=("string", "mod id", True), name=("string", "name or slug", True)),
                         lambda a: __import__("tesl_suite.opponents", fromlist=["remove"]).remove(a["mod"], a["name"])),
     "story_options": (_s("What a story can use: templates (DBH, CWC, IOM), installed story maps, location discs and AI portraits (as asset: paths), reward kinds, "

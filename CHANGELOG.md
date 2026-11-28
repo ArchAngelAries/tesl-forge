@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.3 — delete anything you make
+
+- **Delete what you create:** new cards and decks have a Delete button (a card warns you first if a deck, pack,
+  opponent, mode or story still uses it). An avatar's own emote line has a Clear button, and a translation language has
+  Delete language. Everything else you can make (avatars, card backs, boards, music, packs, AI opponents, game modes,
+  stories, extra emotes, sound and card-voice replacements, remastered art, changed original cards) already had one.
+- **Undo brings it back:** every delete moves the files to the suite's trash, so Undo (Ctrl+Z, or Overview > History)
+  restores them. Removing a card-voice line, an extra emote or a replaced sound now does this too; before, their audio
+  files were deleted for good.
+- **Uninstall a mod from its Overview page,** or with the Uninstall button on Load order, whether it is turned on or
+  not. Uninstalled mods are listed on Load order under "Uninstalled mods", with Restore to bring one back.
+- Also on the command line (`tesl card remove`, `tesl deck remove`, `tesl avatar clear-emote`, `tesl translate remove`,
+  `tesl mod uninstalled`, `tesl mod restore`), the local API and the MCP tools (`remove_item` for every kind,
+  `card_usage`, `uninstall_mod`, `list_uninstalled_mods`, `restore_mod`).
+
 ## 1.0.2 — change original cards, choose how cards are available
 
 - **Change an original card in place:** on the Cards page, "Change this card…" copies any original card into your mod.

@@ -544,3 +544,102 @@ class CardAvailability(unittest.TestCase):
             self.assertTrue(next(c for c in mods.mod_cards(mid) if c["Name"] == "Whiterun Wolfcaller")["InvalidArenaPick"])
             edits.edit_card(GAME, mid, card["ResourceId"]["UniqueName"], arena=True)
             self.assertFalse(next(c for c in mods.mod_cards(mid) if c["Name"] == "Whiterun Wolfcaller")["InvalidArenaPick"])
+
+
+
+class Removal(unittest.TestCase):
+    """Everything a user makes can be deleted (and undone), and an uninstalled mod can be restored (Reddit 2026-11-28)."""
+    @classmethod
+    def setUpClass(cls):
+        from tesl_suite import api as api_mod
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), api_mod.Handler)
+        cls.port = cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown(); cls.server.server_close()
+
+    def call(self, path, method="GET"):
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.status, json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+
+    @needs_sample
+    def test_new_card_and_deck_delete_and_undo(self):
+        from tesl_suite import removal
+        with TempMod() as mid:
+            root = mods.mod_dir(mid)
+            card, art = root / "cards" / "jarl-s-housecarl.json", root / "art" / "jarl-s-housecarl.png"
+            self.assertIn("decks/skyrim-heroes.json", removal.card_usage(mid, "jarl-s-housecarl")["files"])
+            with fsutil.operation("delete card"):
+                r = removal.remove_card(mid, "Jarl's Housecarl")
+            self.assertFalse(card.exists() or art.exists())
+            self.assertIn("the deck Skyrim Heroes", r["still_used_by"])
+            fsutil.undo(mid)
+            self.assertTrue(card.is_file() and art.is_file(), "undo brings the card and its art back")
+            deck = root / "decks" / "skyrim-heroes.json"
+            deck_art = [root / "art" / n for n in json.loads(deck.read_text(encoding="utf-8")).get("deck_art", {}).values()]
+            with fsutil.operation("delete deck"):
+                removal.remove_deck(mid, "skyrim-heroes")
+            self.assertFalse(deck.exists() or any(f.exists() for f in deck_art))
+            fsutil.undo(mid)
+            self.assertTrue(deck.is_file() and all(f.is_file() for f in deck_art))
+            with self.assertRaises(ValueError):
+                removal.remove_card(mid, "no-such-card")
+
+    @needs_sample
+    def test_emote_line_language_and_every_kind(self):
+        from tesl_suite import avatars, removal
+        with TempMod() as mid:
+            who = avatars.list_avatars(mid)["avatars"][0]["slug"]
+            with fsutil.operation("emote"):
+                avatars.set_emote(mid, who, "Hello", text="Well met")
+            with fsutil.operation("clear emote"):
+                removal.remove_item(mid, "avatar_emote", who, {"emote": "Hello"})
+            entry = next(a for a in avatars.list_avatars(mid)["avatars"] if a["slug"] == who)
+            self.assertNotIn("Hello", entry.get("emotes") or {})
+            translations.save(mid, "de", {"Well met": "Sei gegrüßt"})
+            lang = mods.mod_dir(mid) / "locale" / "de.json"
+            with fsutil.operation("delete language"):
+                removal.remove_language(mid, "de")
+            self.assertFalse(lang.exists())
+            fsutil.undo(mid)
+            self.assertTrue(lang.is_file())
+            with self.assertRaises(ValueError):
+                removal.remove_item(mid, "spaceship", "x")
+
+    def test_uninstall_any_mod_and_restore(self):
+        from tesl_suite import packages, removal
+        with TempMod(copy=False) as mid:
+            moved = Path(packages.uninstall(mid)["moved_to"])
+            try:
+                self.assertFalse(mods.mod_dir(mid).exists())
+                listed = [x for x in removal.uninstalled()["mods"] if x["id"] == mid]
+                self.assertEqual(len(listed), 1)
+                removal.restore_mod(listed[0]["folder"])
+                self.assertTrue((mods.mod_dir(mid) / "mod.json").is_file())
+                self.assertFalse(moved.exists())
+            finally:
+                shutil.rmtree(moved, ignore_errors=True)
+
+    @needs_sample
+    def test_api_delete_routes(self):
+        with TempMod() as mid:
+            status, usage = self.call(f"/api/mods/{mid}/cards/bleak-falls-draugr/usage")
+            self.assertEqual(status, 200, usage)
+            self.assertIn("decks/skyrim-heroes.json", usage["files"])
+            status, r = self.call(f"/api/mods/{mid}/cards/bleak-falls-draugr", "DELETE")
+            self.assertEqual(status, 200, r)
+            self.assertFalse((mods.mod_dir(mid) / "cards" / "bleak-falls-draugr.json").exists())
+            status, r = self.call(f"/api/mods/{mid}/decks/skyrim-heroes", "DELETE")
+            self.assertEqual(status, 200, r)
+            status, r = self.call(f"/api/mods/{mid}/undo", "POST")
+            self.assertEqual(status, 200, r)
+            self.assertTrue((mods.mod_dir(mid) / "decks" / "skyrim-heroes.json").is_file(), "API deletes are undo steps")
+            status, r = self.call("/api/uninstalled")
+            self.assertEqual(status, 200, r)
+            self.assertIn("mods", r)

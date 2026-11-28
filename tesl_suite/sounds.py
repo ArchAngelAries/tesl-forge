@@ -228,7 +228,8 @@ def replace_sound(game: GameInstall, mod_id: str, sound: str, files: list[str], 
     manifest["replace"] = [r for r in manifest["replace"] if r.get("sound") != s["id"]]
     manifest["replace"] += [{"sound": s["id"], "label": s["label"], "target": clip, "files": stored, "volume": float(volume)} for clip in s["clips"]]
     for name in old - set(stored):
-        (mod_dir(mod_id) / "audio" / name).unlink(missing_ok=True)
+        if (mod_dir(mod_id) / "audio" / name).is_file():
+            trash(mod_dir(mod_id) / "audio" / name, mod_id)   # undoable
     _write(mod_id, manifest)
     return {"mod": mod_id, "sound": s["id"], "label": s["label"], "takes": len(s["clips"]), "files": stored, "seconds": seconds}
 
@@ -251,7 +252,8 @@ def remove_replacement(mod_id: str, sound: str) -> dict:
     manifest["replace"] = [r for r in manifest["replace"] if r not in gone]
     keep = {f for r in manifest["replace"] for f in r["files"]}
     for f in {f for r in gone for f in r["files"]} - keep:
-        (mod_dir(mod_id) / "audio" / f).unlink(missing_ok=True)
+        if (mod_dir(mod_id) / "audio" / f).is_file():
+            trash(mod_dir(mod_id) / "audio" / f, mod_id)   # undoable
     _write(mod_id, manifest)
     return {"mod": mod_id, "removed": gone[0].get("sound") or sound}
 
@@ -314,7 +316,8 @@ def remove_card_voice(mod_id: str, card: str, line: str) -> dict:
     rel = (c.get("audio") or {}).pop(slot, None)
     if rel is None:
         raise ValueError(f"{c.get('Name')} has no own {slot} line")
-    (mod_dir(mod_id) / rel).unlink(missing_ok=True)
+    if (mod_dir(mod_id) / rel).is_file():
+        trash(mod_dir(mod_id) / rel, mod_id)   # undoable
     if slot in SLOTS and str(c.get(f"{slot}CardVO") or "").startswith("mod_"):
         c[f"{slot}CardVO"] = None
     if not c["audio"]:

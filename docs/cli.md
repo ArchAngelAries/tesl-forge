@@ -15,6 +15,7 @@ tesl mod undo <id> / redo <id> / history <id>
 tesl mod check                          load plan, skipped mods and why, overlaps, class, fingerprint
 tesl mod order --set a,b | --auto
 tesl mod export <id> / install <zip|folder|https link> / uninstall <id>
+tesl mod uninstalled / restore <folder>     uninstalled mods; bring one back
 ```
 
 ## Newer commands
@@ -24,6 +25,10 @@ tesl mod details <id> ...                version, needed mods, conflicts, load-o
 tesl mod release <id> ...                version up with changelog notes (exports carry CHANGELOG.md)
 tesl pack save --mod <id> --name "<pack>" --odds 79,15,4.5,1.5 --last-slot 0,80,15,5 ...   card packs for the store
 tesl pack list --mod <id> / remove --mod <id> --name "<pack>"
+tesl card remove --mod <id> --card "<name>"       delete a new card (its art and voice clips too)
+tesl deck remove --mod <id> --deck "<name>"       delete a deck
+tesl avatar clear-emote --mod <id> --name <avatar> --emote Hello   remove an avatar's own emote line
+tesl translate remove --mod <id> --lang <code>    delete one language's translations
 tesl translate list --mod <id>; export|import --mod <id> --lang <code> [--out|--file <csv>]; set ... --english "<text>" --text "<translation>"
 tesl settings [--set blender=<path>] [--set game_dirs="<folder>;<folder>"]   this computer's settings (extra game folders, Blender, ffmpeg)
 tesl bulk cards --mod <id> --csv cards.csv [--art-dir <folder>]    many cards from a CSV

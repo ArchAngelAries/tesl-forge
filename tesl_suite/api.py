@@ -10,11 +10,16 @@ POST /api/mods/<id>/enable | /disable           (enable: body {"force": true} to
 GET  /api/compat                                load order, skipped mods, overlaps, per-mod class and fingerprint
 POST /api/mods/install                          {"source": uploaded path | folder | https link, "enable", "force"}
 POST /api/mods/<id>/export                      a shareable .zip (returns its path; GET /api/mods/<id>/export.zip downloads it)
-POST /api/mods/<id>/uninstall                   moved to workspace/trash
+POST /api/mods/<id>/uninstall                   moved to workspace/trash (enabled mods are disabled first)
+GET  /api/uninstalled, POST /api/uninstalled/<folder>/restore   uninstalled mods; bring one back
 POST /api/compat/order                          {"order": [ids]} or {"auto": true}
 POST /api/mods/<id>/cards                       {name, template, cost?, attack?, health?, text?, rarity?, art?, rules_from?, no_rules?, unique?}
 POST /api/mods/<id>/changes                     {card} change an original card in place (copies it into the mod; edit it like a card)
 DELETE /api/mods/<id>/changes/<slug>            restore the original card
+DELETE /api/mods/<id>/cards/<slug>              delete a new card (art and voice clips too; undoable); GET .../usage first
+DELETE /api/mods/<id>/decks/<slug>              delete a deck (undoable)
+DELETE /api/mods/<id>/avatars/<slug>/emotes/<emote>   clear an avatar's own emote line
+DELETE /api/mods/<id>/translations/<lang>       delete a translation language
 POST /api/mods/<id>/decks                       {name, cards: "Name x3; Other x2" (";", new lines or commas) or ["Name x3", {name|id, count}], art_card?, description?}
 POST /api/mods/<id>/avatars                     {name, image, voice?, head?}
 POST /api/mods/<id>/avatars/<slug>/emotes       {emote, text?, audio?}
@@ -428,6 +433,12 @@ class Handler(BaseHTTPRequestHandler):
                                                     _int(b.get("health")), b.get("text") or None, b.get("rarity") or None, b.get("art") or None,
                                                     b.get("rules_from") or None, bool(b.get("no_rules")), b.get("unique"),
                                                     b.get("abilities"), b.get("keywords") or None))
+                if what == "cards" and method == "DELETE" and len(p) == 4:
+                    from . import removal
+                    return self._json(removal.remove_card(mod_id, p[3]))
+                if what == "cards" and method == "GET" and len(p) == 5 and p[4] == "usage":
+                    from . import removal
+                    return self._json(removal.card_usage(mod_id, p[3]))
                 if what == "changes" and method == "POST" and len(p) == 3:
                     from . import changes as _changes
                     return self._json(_changes.change_card(g(), mod_id, str(self._payload()["card"])))
@@ -437,12 +448,18 @@ class Handler(BaseHTTPRequestHandler):
                 if what == "decks" and method == "POST":
                     b = self._payload()
                     return self._json(mods.new_deck(g(), mod_id, b["name"], _deck_spec(b.get("cards")), b.get("art_card") or None, b.get("description", "")))
+                if what == "decks" and method == "DELETE" and len(p) == 4:
+                    from . import removal
+                    return self._json(removal.remove_deck(mod_id, p[3]))
                 if what == "avatars" and method == "POST" and len(p) == 3:
                     b = self._payload()
                     return self._json(avatars.new_avatar(mod_id, b["name"], b["image"], b.get("voice") or None, float(b.get("head") or 0.22), b.get("profile") or None))
                 if what == "avatars" and len(p) == 5 and p[4] == "emotes" and method == "POST":
                     b = self._payload()
                     return self._json(avatars.set_emote(mod_id, p[3], b["emote"], b.get("text"), b.get("audio") or None))
+                if what == "avatars" and len(p) == 6 and p[4] == "emotes" and method == "DELETE":
+                    from . import removal
+                    return self._json(removal.clear_emote(mod_id, p[3], p[5]))
                 if what == "avatars" and len(p) == 4 and method == "DELETE":
                     return self._json(avatars.remove(mod_id, p[3]))
                 if what == "avatar-page" and method == "POST":
@@ -648,6 +665,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(_tr.save(p[1], p[3], b.get("values") or {}, bool(b.get("merge", True))))
             if method == "POST" and len(p) == 5 and p[4] == "csv":
                 return self._json(_tr.import_csv(p[1], p[3], self._payload().get("text") or ""))
+            if method == "DELETE" and len(p) == 4:
+                from . import removal
+                return self._json(removal.remove_language(p[1], p[3]))
+        if p == ["uninstalled"] and method == "GET":
+            from . import removal
+            return self._json(removal.uninstalled())
+        if len(p) == 3 and p[0] == "uninstalled" and p[2] == "restore" and method == "POST":
+            from . import removal
+            return self._json(removal.restore_mod(p[1]))
         if len(p) >= 3 and p[0] == "mods" and p[2] == "details":
             from . import details
             mods.read_mod(p[1])
